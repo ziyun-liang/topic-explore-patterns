@@ -1,0 +1,8 @@
+# Reference material (motion/animation clips Lindsey drops in for analysis).
+# This repo is public — reference clips of other products' motion shouldn't
+# get published in it. Folder itself stays tracked via .gitkeep so it exists
+# on clone; everything dropped inside it is ignored.
+reference/*
+!reference/.gitkeep
+
+.DS_Store
