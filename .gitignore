@@ -5,4 +5,11 @@
 reference/*
 !reference/.gitkeep
 
+# Real NYT content (video, images, article assets) staged for the eventual
+# hi-fi swap (M6). This repo is public — proprietary editorial content does
+# not belong in it, same reasoning as the font decision. Stays local until
+# fold-in to napp-100, which is Tailscale-gated.
+assets/*
+!assets/.gitkeep
+
 .DS_Store

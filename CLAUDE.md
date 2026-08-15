@@ -50,6 +50,12 @@ that.
   `reference/` (gitignored — this repo is public, and reference clips of
   other products' motion shouldn't be published in it). Point at files
   there directly rather than pasting links.
+- **Real NYT content:** video/image assets staged ahead of M6 go in
+  `assets/` (also gitignored — public repo, proprietary editorial content,
+  same reasoning as the font decision above). This is separate from
+  `reference/`: `reference/` is research input that never appears in the
+  prototype itself; `assets/` is real content headed for the eventual hi-fi
+  swap.
 
 ## Milestones
 
@@ -95,7 +101,8 @@ question to resolve at kickoff — these are deliberately *not* resolved here.
 
 - [ ] **M6 — Real content + fold into napp-100.** Already fully scoped in
   `README.md`'s "Path to hi-fi" section. Listed here only for ordering — not
-  re-specified.
+  re-specified. Real assets can be staged early in `assets/` (gitignored,
+  see conventions above) ahead of this milestone actually starting.
 
 ## Backlog
 
