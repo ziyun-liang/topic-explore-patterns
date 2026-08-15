@@ -1,0 +1,325 @@
+/* styles.css
+ *
+ * Low-fi phase: system font stack only (no NYT .otf files ship in this
+ * public repo — see README "Fonts" section for the swap point at fold-in).
+ * Georgia stands in for the eventual NYTCheltenham on question text, since
+ * that's the one piece of real copy in this build and it reads as the
+ * "headline" role, same as .t-card-t in the existing exploration.
+ */
+
+:root {
+	--line: #e2e2e2;
+	--muted: #6b6b6b;
+	--ink: #121212;
+	--card-bg: #d9d9d9;
+	--bar-bg: #d9d9d9;
+	--bar-bg-light: #ececec;
+	--page-w: 440px;
+	--switcher-h: 64px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+	margin: 0;
+	background: #f2f2f2;
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+	color: var(--ink);
+}
+
+button { font: inherit; }
+
+#app { min-height: 100vh; }
+
+.app-shell {
+	max-width: var(--page-w);
+	margin: 0 auto;
+	min-height: 100vh;
+	background: #fff;
+	position: relative;
+	display: flex;
+	flex-direction: column;
+}
+
+/* Visual frame so the fixed 440px page is legible on a wide desktop browser
+   during dev; irrelevant on an actual phone, where the shell just fills the
+   viewport. */
+@media (min-width: 480px) {
+	.app-shell { box-shadow: 0 0 0 1px var(--line); }
+}
+
+/* ---------- Menu (#/) ---------- */
+
+.menu { padding: 28px 20px 40px; }
+
+.menu-eyebrow {
+	font-size: 11px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--muted);
+	margin: 0 0 6px;
+}
+
+.menu-title {
+	font-family: Georgia, 'Times New Roman', serif;
+	font-size: 24px;
+	font-weight: 500;
+	margin: 0 0 24px;
+	color: var(--ink);
+}
+
+.menu-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	text-align: left;
+	padding: 18px 16px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+	background: #fff;
+	margin-bottom: 12px;
+	cursor: pointer;
+}
+
+.menu-item-name {
+	font-family: Georgia, 'Times New Roman', serif;
+	font-size: 18px;
+	color: var(--ink);
+}
+
+.menu-item-arrow { color: var(--muted); font-size: 16px; }
+
+/* ---------- Pattern view shell ---------- */
+
+.pattern-header {
+	position: sticky;
+	top: 0;
+	z-index: 15;
+	background: #fff;
+	border-bottom: 1px solid var(--line);
+	padding: 14px 16px;
+}
+
+.back-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	border: none;
+	background: none;
+	padding: 0;
+	color: var(--muted);
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.pattern-header .topic-label {
+	display: block;
+	margin-top: 8px;
+	font-size: 11px;
+	letter-spacing: 1px;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.pattern-header .pattern-name {
+	display: block;
+	margin-top: 2px;
+	font-family: Georgia, 'Times New Roman', serif;
+	font-size: 20px;
+	color: var(--ink);
+}
+
+.pattern-main { flex: 1; padding-bottom: calc(var(--switcher-h) + 16px); }
+
+/* Pinned bottom switcher — flips pattern in place, no reload */
+
+.switcher {
+	position: fixed;
+	bottom: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 100%;
+	max-width: var(--page-w);
+	height: var(--switcher-h);
+	display: flex;
+	background: #fff;
+	border-top: 1px solid var(--line);
+	z-index: 20;
+}
+
+.switcher-btn {
+	flex: 1;
+	border: none;
+	background: none;
+	padding: 10px 2px 0;
+	font-size: 10.5px;
+	letter-spacing: .2px;
+	color: var(--muted);
+	cursor: pointer;
+	box-shadow: inset 0 2px 0 transparent;
+}
+
+.switcher-btn.active {
+	color: var(--ink);
+	font-weight: 600;
+	box-shadow: inset 0 2px 0 var(--ink);
+}
+
+/* ---------- Shared: question + card row (Carousel, Tabs, Accordion) ---------- */
+
+.direction { padding: 20px 16px; border-bottom: 1px solid var(--line); }
+.direction:last-child { border-bottom: none; }
+
+.q-title {
+	font-family: Georgia, 'Times New Roman', serif;
+	font-size: 17px;
+	line-height: 1.35;
+	font-weight: 500;
+	margin: 0 0 14px;
+	color: var(--ink);
+}
+
+.cards-row { display: flex; gap: 12px; }
+
+.card { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.card-img {
+	width: 100%;
+	aspect-ratio: 1 / 1;
+	background: var(--card-bg);
+	border-radius: 4px;
+}
+
+.card-bar { height: 10px; border-radius: 2px; background: var(--bar-bg); }
+.card-bar.short { width: 62%; }
+.card-bar.date { height: 7px; width: 42%; background: var(--bar-bg-light); margin-top: 2px; }
+
+/* ---------- Carousel (#/carousel) — every direction open, stacked ---------- */
+/* Uses .direction/.q-title/.cards-row as-is, no extra CSS needed. */
+
+/* ---------- Tabs (#/tabs) ---------- */
+
+.tab-strip {
+	display: flex;
+	gap: 8px;
+	padding: 14px 16px 12px;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+.tab-strip::-webkit-scrollbar { display: none; }
+
+.tab {
+	flex: 0 0 auto;
+	padding: 8px 14px;
+	border-radius: 999px;
+	border: 1px solid var(--line);
+	background: #fff;
+	color: var(--muted);
+	font-size: 13px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.tab.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* ---------- Accordion (#/accordion) ---------- */
+
+.acc-item { border-bottom: 1px solid var(--line); }
+.acc-item:last-child { border-bottom: none; }
+
+.acc-header {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	text-align: left;
+	padding: 16px;
+	border: none;
+	background: none;
+	cursor: pointer;
+	font-family: Georgia, 'Times New Roman', serif;
+	font-size: 16px;
+	color: var(--ink);
+}
+
+.acc-header .chevron {
+	flex: 0 0 auto;
+	font-family: -apple-system, sans-serif;
+	color: var(--muted);
+	transition: transform .2s ease;
+}
+
+.acc-item.open .chevron { transform: rotate(180deg); }
+
+.acc-body { padding: 0 16px 20px; }
+
+/* ---------- Card Swipe (#/swipe) — drag-to-cycle deck per direction ---------- */
+
+.swipe-group { padding: 20px 16px; border-bottom: 1px solid var(--line); }
+.swipe-group:last-child { border-bottom: none; }
+
+.deck {
+	position: relative;
+	width: 62%;
+	max-width: 248px;
+	aspect-ratio: 248 / 357;
+	margin: 4px auto 10px;
+	touch-action: pan-y;
+}
+
+.deck-card {
+	position: absolute;
+	inset: 0;
+	border-radius: 10px;
+	background: var(--card-bg);
+	box-shadow: 0 1px 3px rgba(0,0,0,.12);
+	transition: transform .28s ease, opacity .28s ease;
+	cursor: grab;
+	will-change: transform;
+}
+
+.deck-card:active { cursor: grabbing; }
+
+.deck-card.dragging { transition: none; }
+
+.deck-hint, .deck-counter {
+	text-align: center;
+	font-size: 11px;
+	color: var(--muted);
+	margin: 0;
+}
+
+/* ---------- Portal (#/portal) — windowed peek, native scroll-snap ---------- */
+
+.portal-group { padding: 20px 16px; border-bottom: 1px solid var(--line); }
+.portal-group:last-child { border-bottom: none; }
+
+.portal-window {
+	width: 100%;
+	height: 190px;
+	overflow: hidden;
+	border-radius: 10px;
+}
+
+.portal-strip {
+	display: flex;
+	gap: 12px;
+	height: 100%;
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+	scrollbar-width: none;
+	/* trailing padding lets the last card snap without a hard right-edge
+	   stop, and the strip is wider than its window so the next card's
+	   edge always peeks — the "portal" effect. */
+	padding-right: 30%;
+}
+.portal-strip::-webkit-scrollbar { display: none; }
+
+.portal-card {
+	flex: 0 0 70%;
+	scroll-snap-align: start;
+	border-radius: 10px;
+	background: var(--card-bg);
+}
