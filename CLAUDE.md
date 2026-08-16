@@ -39,6 +39,39 @@ that.
   prototype is fully scoped in `README.md`'s "Path to hi-fi" section — not
   repeated here.
 
+## Findings
+
+What the prototype has actually told us about the patterns. This is the output;
+everything else is scaffolding.
+
+- **Tabs cannot carry a real question at phone width.** Established 2026-08-16 by
+  putting the full question in each pill instead of a 3-word truncation. Measured
+  at 390px (strip visible width 390px):
+
+  | pill | width | vs screen |
+  |---|---|---|
+  | Are teachers worried about A.I.’s impact? | 322px | 83% |
+  | How are young people feeling about A.I.? | 322px | 83% |
+  | How can graduates prepare for the A.I. economy? | 382px | 98% |
+  | How do A.I. companies make money from the education sector? | **482px** | **124%** |
+
+  Total strip width 1573px — **4× the viewport**. The longest question makes a
+  pill wider than the phone.
+
+  **This overflow is deliberate and must not be "fixed".** Lindsey's explicit
+  call: the truncation was *hiding* the constraint, and hiding it is the opposite
+  of what a stress-test prototype is for. A future session that trims the labels
+  to make the strip tidy destroys the finding. The question also appears twice on
+  the Tabs screen (in the active pill and as the heading below) — also accepted,
+  because removing the heading would leave the question readable only inside a
+  pill that's wider than the screen.
+
+  Two escape hatches exist if this ever needs to become usable rather than
+  evidential, both considered and rejected for now: let pills wrap to 2 lines
+  (radius would move 999px → 20px, and it converges visually on the Portal
+  pattern, which is itself interesting); or author explicit short labels per
+  question, decoupling pill text from copy.
+
 ## Working conventions
 
 - **Visual/craft work: invoke `/lowfi-craft` first.** It was extracted *from*
@@ -339,6 +372,32 @@ promote into a milestone once there's enough shape to act on.
     pattern name and the old name would actively mislead.
   - Verified: 7/7 behaviour tests still pass, audit within targets, 0 console
     errors, back link lands on `#/` whose H1 is exactly "Ways in".
+
+- **2026-08-16 (fourth pass) — new question copy + Tabs shows full questions.**
+  - Theme renamed `A.I. education impact` (periods, matching the questions and
+    NYT house style). All five question strings replaced. Counts and structure
+    untouched at Lindsey's request — still one pool of 5, first-N per pattern
+    (3/4/5/3/4), still physically duplicated across the per-pattern arrays.
+  - Two of the five arrived in the embedded form with a question mark ("How
+    graduates can prepare…?"); corrected to the direct form ("How **can**
+    graduates prepare…?", "How **do** A.I. companies make money…?") so all five
+    are actually questions. Apostrophe is the typographic `’`, both for house
+    style and because a straight `'` would terminate the single-quoted strings.
+  - **`shortLabel` deleted.** Tabs pills now carry the full question. See
+    **Findings** for what that revealed and why the resulting overflow is
+    deliberate. Copy is no longer constrained to open with distinct first-3-words,
+    which is a real freeing-up — but it now drives pill width directly instead.
+  - **The tab-height question flipped and got fixed.** The M1 pass measured 0px
+    spread; the new copy made it **25px** (short questions wrap to 1 line, long
+    ones to 2), so the cards jumped mid-swap — a layout shift and a fade at once.
+    `.tab-content .q-title` now reserves two lines via `min-height: 2.7em`
+    (2 × the 1.35 line-height, tracking `--t-title` rather than hardcoding 51px).
+    Re-measured: all four tabs hold the cards at y=284, **spread 0px**.
+    *This will need re-checking on any future copy change* — it's a function of
+    the copy, not a permanent property.
+  - Note the eyebrow removal earlier in the day already took most routes to 3
+    type sizes; that holds (30/19/15, minStep 1.27×). Audit still within targets,
+    7/7 behaviour tests, 0 console errors.
 
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's

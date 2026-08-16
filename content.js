@@ -11,56 +11,75 @@
 // (qMKFOJCaalehqHh2j8CUCF, node 196:13252) — Carousel 3, Tabs 4,
 // Accordion 5, Card Swipe 3, Portal 4 — so don't add/remove entries without
 // checking patterns.js's per-pattern card-count assumptions too.
+//
+// TWO THINGS TO KNOW BEFORE EDITING A QUESTION:
+//
+//  1. Each question is REPEATED in every pattern that shows it — Q1 appears in
+//     all five arrays below. Change a question and you must change every copy,
+//     or the patterns quietly disagree with each other. (The arrays share the
+//     same first-N ordering: Carousel/Swipe show Q1–Q3, Tabs/Portal Q1–Q4,
+//     Accordion all five.)
+//
+//  2. The Tabs strip shows each question IN FULL as its pill label (it used to
+//     truncate to the first three words). So question LENGTH now drives pill
+//     width directly: a long question makes a pill wider than the 390px strip
+//     itself. Check the tab strip after any copy change — this is the pattern's
+//     real stress test, and it's the reason the copy here is real rather than
+//     lorem.
+//
+// Use the typographic apostrophe (’) not the straight one ('): it's house
+// style, and a straight apostrophe would terminate these single-quoted strings.
 
 window.CONTENT = {
 	// The mocked theme name. Renders in two places: the menu's eyebrow, and the
 	// title of every pattern screen — all five say the same thing, on purpose
 	// (the pattern you're in is identified by the switcher, not the header).
 	// Sentence case, matching 'Ways in'; the eyebrow uppercases it in CSS.
-	topic: 'AI education impact',
+	// "A.I." with periods, matching the questions below and NYT house style.
+	topic: 'A.I. education impact',
 
 	patterns: {
 		carousel: {
 			directions: [
-				{ question: 'How are schools actually using AI in classrooms right now?' },
-				{ question: 'What are teachers saying about AI-assisted grading and lesson planning?' },
-				{ question: 'Where are districts drawing the line on AI in student work?' }
+				{ question: 'Are teachers worried about A.I.’s impact?' },
+				{ question: 'How are young people feeling about A.I.?' },
+				{ question: 'How can graduates prepare for the A.I. economy?' }
 			]
 		},
 
 		tabs: {
 			directions: [
-				{ question: 'How are schools actually using AI in classrooms right now?' },
-				{ question: 'What are teachers saying about AI-assisted grading and lesson planning?' },
-				{ question: 'Where are districts drawing the line on AI in student work?' },
-				{ question: 'What do parents want to know before their kid uses an AI tutor?' }
+				{ question: 'Are teachers worried about A.I.’s impact?' },
+				{ question: 'How are young people feeling about A.I.?' },
+				{ question: 'How can graduates prepare for the A.I. economy?' },
+				{ question: 'How do A.I. companies make money from the education sector?' }
 			]
 		},
 
 		accordion: {
 			directions: [
-				{ question: 'How are schools actually using AI in classrooms right now?' },
-				{ question: 'What are teachers saying about AI-assisted grading and lesson planning?' },
-				{ question: 'Where are districts drawing the line on AI in student work?' },
-				{ question: 'What do parents want to know before their kid uses an AI tutor?' },
-				{ question: 'How is AI changing what counts as cheating?' }
+				{ question: 'Are teachers worried about A.I.’s impact?' },
+				{ question: 'How are young people feeling about A.I.?' },
+				{ question: 'How can graduates prepare for the A.I. economy?' },
+				{ question: 'How do A.I. companies make money from the education sector?' },
+				{ question: 'Is A.I. making us dumber?' }
 			]
 		},
 
 		swipe: {
 			directions: [
-				{ question: 'How are schools actually using AI in classrooms right now?' },
-				{ question: 'What are teachers saying about AI-assisted grading and lesson planning?' },
-				{ question: 'Where are districts drawing the line on AI in student work?' }
+				{ question: 'Are teachers worried about A.I.’s impact?' },
+				{ question: 'How are young people feeling about A.I.?' },
+				{ question: 'How can graduates prepare for the A.I. economy?' }
 			]
 		},
 
 		portal: {
 			directions: [
-				{ question: 'How are schools actually using AI in classrooms right now?' },
-				{ question: 'What are teachers saying about AI-assisted grading and lesson planning?' },
-				{ question: 'Where are districts drawing the line on AI in student work?' },
-				{ question: 'What do parents want to know before their kid uses an AI tutor?' }
+				{ question: 'Are teachers worried about A.I.’s impact?' },
+				{ question: 'How are young people feeling about A.I.?' },
+				{ question: 'How can graduates prepare for the A.I. economy?' },
+				{ question: 'How do A.I. companies make money from the education sector?' }
 			]
 		}
 	}

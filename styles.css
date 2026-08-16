@@ -480,6 +480,15 @@ svg { display: block; }
 /* Shape, fill and mask come from the shared pill-row rules above. */
 .tab-strip { padding-bottom: var(--s-6); }
 
+/* Reserve two lines for the question so the cards below never move when you
+   switch tabs. Measured at 390px: the short questions wrap to 1 line and the
+   long ones to 2, so without this the cards jumped 25px mid-swap — a layout
+   shift and a fade at the same time, which reads as jank and undercuts the swap
+   animation. 2.7em is 2 x the 1.35 line-height, resolved against .q-title's own
+   font-size, so it tracks --t-title instead of hardcoding 51px. It's a floor,
+   not a cap: a 3-line question still grows normally. */
+.tab-content .q-title { min-height: 2.7em; }
+
 /* ---------- Accordion (#/accordion) ---------- */
 
 .acc-item { padding: 0 var(--gutter); }

@@ -123,17 +123,6 @@
 		return '<div class="ph-img">' + icon('image', 28) + '</div>';
 	}
 
-	// 3 words, not 4: at 15px a 4-word label ate ~60% of a 390px strip, so barely
-	// one and a half tabs fit. The questions all open with distinct subjects
-	// ("How are schools", "What are teachers", "Where are districts"), so three
-	// words is still enough to tell them apart.
-	function shortLabel(question, maxWords) {
-		maxWords = maxWords || 3;
-		var words = question.replace(/\?$/, '').split(' ');
-		if (words.length <= maxWords) return words.join(' ');
-		return words.slice(0, maxWords).join(' ') + '…';
-	}
-
 	// Flat thumbnail skeleton — carousel / tabs / accordion. Content, so it sits
 	// on white with no fill of its own (grey fill is reserved for tappables).
 	function cardsRowHTML(count) {
@@ -195,6 +184,13 @@
 	//
 	// Keeping the strip also means the active pill's fill transitions for free
 	// via the shared pill-row rule's existing background-color transition.
+	//
+	// Pills carry the question IN FULL (2026-08-16, Lindsey's call). They used to
+	// truncate to the first three words, which read as an abbreviation of a
+	// question rather than a question, and quietly hid the pattern's real
+	// constraint: at 390px a long question makes a pill wider than the strip. The
+	// truncation was concealing that, and concealing it is the opposite of what a
+	// stress-test prototype is for.
 	function renderTabs(main, directions) {
 		var active = 0;
 
@@ -208,7 +204,7 @@
 				return (
 					'<button class="tab' + (i === active ? ' active' : '') +
 					'" data-i="' + i + '">' +
-					escapeHTML(shortLabel(d.question)) +
+					escapeHTML(d.question) +
 					'</button>'
 				);
 			})
