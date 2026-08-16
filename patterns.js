@@ -19,11 +19,35 @@
 		{ id: 'portal', label: 'Portal' }
 	];
 
-	// Card counts per pattern, taken from the Figma sketch metadata
-	// (qMKFOJCaalehqHh2j8CUCF, node 196:13252) rather than guessed:
-	// Carousel/Tabs/Accordion show 2 side-by-side cards per open direction;
-	// Swipe/Portal show a deck of 3.
-	var CARD_COUNTS = { carousel: 2, tabs: 2, accordion: 2, swipe: 3, portal: 3 };
+	// Only `portal` reads this now. Patterns 1–4 render one card of each content
+	// kind, so their count is inherently 3 and is defined by CARD_ORDERS below.
+	// Kept rather than deleted because it's the documented Figma-sourced figure
+	// (qMKFOJCaalehqHh2j8CUCF, node 196:13252).
+	var CARD_COUNTS = { portal: 3 };
+
+	// The three content-card kinds (Figma node 199:4522) and the order each
+	// question presents them in.
+	//
+	// A TABLE, not Math.random(), for the same reason BAR_WIDTHS is one: rows
+	// shouldn't look mechanically cloned down the page, but the layout has to be
+	// stable. Real randomness would mean every screenshot differs, and — worse for
+	// a comparison harness — a reviewer flipping between Carousel and Tabs would be
+	// comparing different content instead of different interactions.
+	//
+	// Indexed by the question's position, so question n gets the same order in
+	// every pattern. Five entries covers the Accordion's five questions without a
+	// repeat.
+	var CARD_ORDERS = [
+		['excerpt', 'video', 'summary'],
+		['video', 'summary', 'excerpt'],
+		['summary', 'excerpt', 'video'],
+		['excerpt', 'summary', 'video'],
+		['video', 'excerpt', 'summary']
+	];
+
+	function cardOrder(index) {
+		return CARD_ORDERS[index % CARD_ORDERS.length];
+	}
 
 	function escapeHTML(str) {
 		var div = document.createElement('div');
@@ -90,13 +114,18 @@
 		'chevron-down': '<path d="m6 9 6 6 6-6"/>',
 		image: '<rect width="18" height="18" x="3" y="3" rx="2"/>' +
 			'<circle cx="9" cy="9" r="2"/>' +
-			'<path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>'
+			'<path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
+		play: '<path d="M9 5.5v13l10.5-6.5z"/>'
 	};
 
-	function icon(name, size) {
+	// `filled` is for the play mark, which is a solid triangle in the Figma rather
+	// than an outline. Keeping the stroke on as well as the fill is what rounds its
+	// corners, via stroke-linejoin — otherwise the tip is a hard spike.
+	function icon(name, size, filled) {
 		return (
 			'<svg width="' + (size || 16) + '" height="' + (size || 16) + '" ' +
-			'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+			'viewBox="0 0 24 24" fill="' + (filled ? 'currentColor' : 'none') + '" ' +
+			'stroke="currentColor" ' +
 			'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ' +
 			'aria-hidden="true">' + ICON_PATHS[name] + '</svg>'
 		);
@@ -110,28 +139,61 @@
 		['100%', '84%', '34%']
 	];
 
-	function barsHTML(variant) {
-		var w = BAR_WIDTHS[variant % BAR_WIDTHS.length];
-		return (
-			'<div class="ph-bar" style="width:' + w[0] + '"></div>' +
-			'<div class="ph-bar" style="width:' + w[1] + '"></div>' +
-			'<div class="ph-bar ph-bar--meta" style="width:' + w[2] + '"></div>'
-		);
-	}
-
 	function imgWellHTML() {
 		return '<div class="ph-img">' + icon('image', 28) + '</div>';
 	}
 
-	// Flat thumbnail skeleton — carousel / tabs / accordion. Content, so it sits
-	// on white with no fill of its own (grey fill is reserved for tappables).
-	function cardsRowHTML(count) {
-		var html = '<div class="cards-row">';
-		for (var i = 0; i < count; i++) {
-			html += '<div class="card">' + imgWellHTML() + barsHTML(i) + '</div>';
+	// ---------- Content cards ----------
+	//
+	// Three kinds from Figma node 199:4522. Same box, different insides:
+	//   summary — photo glyph, then headline + 2 lines pinned to the base
+	//   video   — play mark, then 2 lines pinned to the base
+	//   excerpt — headline, avatar + byline, then a quote rule beside 8 lines
+	//
+	// `variant` only drives bar-width variation, reusing the existing BAR_WIDTHS
+	// table so a row of three doesn't read as cloned.
+
+	function lineHTML(width) {
+		return '<div class="card-bar" style="width:' + width + '"></div>';
+	}
+
+	function cardHTML(kind, variant) {
+		var w = BAR_WIDTHS[variant % BAR_WIDTHS.length];
+		var inner;
+
+		if (kind === 'video') {
+			inner =
+				'<div class="card-glyph">' + icon('play', 96, true) + '</div>' +
+				'<div class="card-foot">' + lineHTML(w[0]) + lineHTML(w[1]) + '</div>';
+		} else if (kind === 'excerpt') {
+			// Eight lines, the last one short so it reads as the end of a paragraph
+			// rather than a block that got cut off.
+			var lines = '';
+			for (var i = 0; i < 8; i++) lines += lineHTML(i === 7 ? w[2] : '100%');
+			inner =
+				'<div class="card-bar card-bar--head" style="width:' + w[0] + '"></div>' +
+				'<div class="card-byline"><div class="card-avatar"></div>' +
+				'<div class="card-bar"></div></div>' +
+				'<div class="card-quote"><div class="card-rule"></div>' +
+				'<div class="card-body">' + lines + '</div></div>';
+		} else {
+			inner =
+				'<div class="card-glyph">' + icon('image', 96) + '</div>' +
+				'<div class="card-foot">' +
+				'<div class="card-bar card-bar--head" style="width:' + w[1] + '"></div>' +
+				lineHTML(w[0]) + lineHTML('100%') +
+				'</div>';
 		}
-		html += '</div>';
-		return html;
+
+		return '<div class="card card--' + kind + '">' + inner + '</div>';
+	}
+
+	// One row per question, carrying all three kinds in this question's order.
+	function cardRowHTML(index) {
+		var cards = cardOrder(index).map(function (kind, i) {
+			return cardHTML(kind, index + i);
+		}).join('');
+		return '<div class="cards-row">' + cards + '</div>';
 	}
 
 	// Filled card skeleton — swipe deck / portal strip, where a card reads as a
@@ -150,11 +212,13 @@
 	// True for the carousel, where each .direction is a top-level group. False
 	// for tabs, where the cascading unit is the .tab-content wrapper — marking
 	// both would nest one entrance animation inside another.
-	function directionHTML(direction, cardCount, isCascadeUnit) {
+	// `index` is the question's position, which selects its card order — so the
+	// same question shows the same three cards in the same order in every pattern.
+	function directionHTML(direction, index, isCascadeUnit) {
 		return (
 			'<div class="direction' + (isCascadeUnit ? ' cascade-item' : '') + '">' +
 			'<p class="q-title">' + escapeHTML(direction.question) + '</p>' +
-			cardsRowHTML(cardCount) +
+			cardRowHTML(index) +
 			'</div>'
 		);
 	}
@@ -163,7 +227,7 @@
 
 	function renderCarousel(main, directions) {
 		main.innerHTML = directions
-			.map(function (d) { return directionHTML(d, CARD_COUNTS.carousel, true); })
+			.map(function (d, i) { return directionHTML(d, i, true); })
 			.join('');
 	}
 
@@ -223,7 +287,9 @@
 		});
 
 		function paintContent(animate) {
-			content.innerHTML = directionHTML(directions[active], CARD_COUNTS.tabs, false);
+			// Cards only, no question heading: the active pill IS the question
+			// (Figma 199:5046), so repeating it here said the same thing twice.
+			content.innerHTML = cardRowHTML(active);
 			if (!animate) return;
 			// Restarting a keyframe on a node that PERSISTS needs the class
 			// removed, a reflow forced to register the removal, then re-added —
@@ -271,6 +337,9 @@
 		var openIndex = 0;
 
 		var wrap = document.createElement('div');
+		// .acc-list carries the gutter, because the grey moved onto .acc-item and
+		// would otherwise bleed into it (see styles.css).
+		wrap.className = 'acc-list';
 		main.appendChild(wrap);
 
 		wrap.innerHTML = directions
@@ -284,7 +353,7 @@
 					'<span class="chevron">' + icon('chevron-down') + '</span>' +
 					'</button>' +
 					'<div class="acc-body-outer">' +
-					'<div class="acc-body">' + cardsRowHTML(CARD_COUNTS.accordion) + '</div>' +
+					'<div class="acc-body">' + cardRowHTML(i) + '</div>' +
 					'</div>' +
 					'</div>'
 				);
@@ -311,28 +380,42 @@
 
 	// ---------- Card Swipe: drag-to-cycle deck per direction ----------
 
-	function createDeck(count, withHint) {
+	// `kinds` is this question's card order, so the deck cycles through the same
+	// three content kinds the other patterns lay out in a row.
+	function createDeck(kinds, variant, withHint) {
 		var deck = document.createElement('div');
 		deck.className = 'deck';
 
+		var count = kinds.length;
 		var cards = [];
-		for (var i = 0; i < count; i++) {
+		kinds.forEach(function (kind, i) {
 			var c = document.createElement('div');
-			c.className = 'deck-card ph-card';
-			c.innerHTML = phCardInnerHTML(i);
+			c.className = 'deck-card';
+			// A real card, not a separate skeleton: cardHTML returns the outer
+			// .card element, so unwrap it into the positioned .deck-card.
+			c.innerHTML = cardHTML(kind, variant + i);
+			var inner = c.firstChild;
+			c.className = 'deck-card ' + inner.className;
+			c.innerHTML = inner.innerHTML;
 			deck.appendChild(c);
 			cards.push(c);
-		}
+		});
 
 		// Depth comes from offset + scale + the card's own shadow, NOT from
 		// fading opacity: the cards share a fill that's barely off white, so
 		// fading them made the stack disappear entirely rather than recede.
+		//
+		// Offsets right AND down (Figma 199:5357). It used to offset straight down,
+		// which read as a shorter card rather than a stack. The scale is what insets
+		// the top and bottom, so translateY only needs to be small — enough to break
+		// the symmetry, not enough to push the back card below the front one.
 		function layout() {
 			cards.forEach(function (el, idx) {
 				el.style.zIndex = String(count - idx);
 				el.style.opacity = '1';
 				el.style.transform =
-					'translateY(' + idx * 12 + 'px) scale(' + (1 - idx * 0.045) + ')';
+					'translate(' + idx * 16 + 'px, ' + idx * 6 + 'px) ' +
+					'scale(' + (1 - idx * 0.035) + ')';
 			});
 		}
 		layout();
@@ -396,7 +479,7 @@
 			group.className = 'swipe-group cascade-item';
 			group.innerHTML = '<p class="q-title">' + escapeHTML(d.question) + '</p>';
 
-			var deck = createDeck(CARD_COUNTS.swipe, i === 0);
+			var deck = createDeck(cardOrder(i), i, i === 0);
 			group.appendChild(deck.el);
 			if (deck.extrasHTML) group.insertAdjacentHTML('beforeend', deck.extrasHTML);
 

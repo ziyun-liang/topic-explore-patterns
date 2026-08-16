@@ -61,10 +61,15 @@ everything else is scaffolding.
   **This overflow is deliberate and must not be "fixed".** Lindsey's explicit
   call: the truncation was *hiding* the constraint, and hiding it is the opposite
   of what a stress-test prototype is for. A future session that trims the labels
-  to make the strip tidy destroys the finding. The question also appears twice on
-  the Tabs screen (in the active pill and as the heading below) — also accepted,
-  because removing the heading would leave the question readable only inside a
-  pill that's wider than the screen.
+  to make the strip tidy destroys the finding.
+
+  **Amended later the same day:** the duplicate question heading below the strip
+  is now **gone** (Figma 199:5046 shows cards directly under the pills). So the
+  question exists in exactly one place — a pill wider than the screen — which
+  *sharpens* the finding rather than softening it: reading the current question
+  now genuinely requires scrolling the strip. The earlier note here said the
+  heading stayed "so the question is always readable"; that is no longer true and
+  is no longer the intent.
 
   Two escape hatches exist if this ever needs to become usable rather than
   evidential, both considered and rejected for now: let pills wrap to 2 lines
@@ -495,6 +500,72 @@ promote into a milestone once there's enough shape to act on.
     console errors.
   - **240ms is unverified on a real phone.** This is the control you touch most, and
     whether the travel feels right is exactly what a screenshot can't show.
+
+- **2026-08-16 (seventh pass) — three content-card styles.** Figma node `199:4522`
+  plus per-pattern sketches (Carousel `199:4653`, Tabs `199:5046`, Accordion
+  `199:5146`, Card Swipe `199:5357`). The single square-image-plus-three-bars card
+  is replaced by **Excerpt / Video / Summary**, much larger, three per question in a
+  horizontally scrolling row. **Portal is deliberately untouched.**
+  - **The Figma was already using this project's ramp.** Sampled from the render
+    rather than assumed: card `#e2e2e2` = `--g-2` exactly, bars/glyph/rule
+    `#c4c4c4` = `--g-4` exactly, accordion panel `#f5f5f5` ≈ `--g-1`. So **no new
+    greys and no ramp change** — but the ramp is now used **one step deeper than M3
+    named it**: `--g-2` went from "placeholder well" to "card surface", `--g-4` from
+    "photo-glyph stroke" to "bars". The grey-fill-means-tappable rule survives,
+    because a content card is tappable. `--g-3` (the lighter meta bar) is now unused
+    outside Portal.
+  - **`aspect-ratio: 355 / 473`, not flex stretch.** The plan originally said
+    stretch; that was wrong, because the swipe deck's cards are
+    `position: absolute; inset: 0` where stretch cannot apply — it would have forced
+    two different height mechanisms. Aspect-ratio gives one rule for rows *and* deck,
+    reproduces the Figma shape exactly (measured 0.751 everywhere), and makes all
+    three kinds the same size whatever their content. `overflow: hidden` is the
+    safety net.
+  - **Bar weights come from the Figma, not `.ph-bar`** — 25px headline / 16px line,
+    versus `.ph-bar`'s 9px, which was sized for a ~170px thumbnail and reads as dust
+    in a card this size. `.ph-bar` is untouched because Portal still uses it.
+  - **Order is a TABLE, not `Math.random()`.** Lindsey asked for randomised order;
+    real randomness would break the convention `BAR_WIDTHS` already documents, make
+    every screenshot unstable, and — worse in a comparison harness — leave a reviewer
+    flipping between Carousel and Tabs comparing *different content*. `CARD_ORDERS`
+    is indexed by question position, so question *n* shows the same three cards in
+    the same order in every pattern, and the Accordion's five questions get five
+    distinct orders. Verified.
+  - **Accordion is now ONE grey block** wrapping header and cards. The grey moved
+    from `.acc-header` to `.acc-item`; the gutter moved from `.acc-item` to a new
+    `.acc-list` (leaving it on the item would bleed the fill into the gutter);
+    `.acc-header` went transparent and gained `:active { background: var(--g-2) }`,
+    because with no fill of its own the shared `scale(0.97)` moved only the text —
+    the same problem the switcher's segments had. `overflow: hidden` on `.acc-item`
+    clips the card row at the panel edge. The resulting ladder — panel `--g-1`, card
+    `--g-2`, bars `--g-4` — is three visible steps.
+  - **Deck** is full-width and left-aligned at the gutter (was 62%/248px centred),
+    and now offsets **right and down** per the sketch. Depth is still offset + scale
+    + shadow with `opacity: 1` throughout — do not reintroduce opacity fading, per M3.
+  - **Two bugs found on the way, both measured:**
+    1. **`scroll-snap` ate the gutter.** The snapport defaults to the *padding box*,
+       whose left edge is the border edge, so `scroll-snap-align: start` targeted
+       x=0 and mandatory snapping scrolled the row 20px to get there — the first
+       card sat flush against the screen edge despite `padding-left: 20px`.
+       `scroll-padding-inline: var(--gutter)` fixes it; `.tab-strip` already carried
+       that line for the same reason and I'd omitted it.
+    2. **`.tab-content` had no padding for the row's bleed to cancel.** It used to
+       hold a `.direction`, which brought its own gutter; holding the row directly,
+       the negative margin overshot both screen edges — a **430px-wide row with
+       343px cards** in a 390px viewport, against 390/308 everywhere else.
+  - **Deleted:** `cardsRowHTML`, `barsHTML`, the flat `.card` rules, and
+    `.tab-content .q-title { min-height: 2.7em }` (dead with the heading, and the
+    25px jump it prevented can't recur now every card is a fixed aspect-ratio).
+    `CARD_COUNTS` is now read only by Portal.
+  - **Verified:** card fills/bar heights/avatar/rule/glyph positions all match the
+    Figma within ~2%; geometry identical across the four patterns (308×410 at 390px,
+    ratio 0.751); no horizontal page overflow; **Portal pixel-identical at both
+    breakpoints (`maxDelta=0`) — it's the control proving the change didn't leak**;
+    deck still drags and cycles; 8/8 behaviour suite (incl. a new "question appears
+    once" check) + 7/7 indicator suite; audit clean with radii actually *down* (the
+    `--r-md` image well is gone from these cards).
+  - **Not yet on a real phone.** Bar weights and card size are the things to judge
+    there.
 
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's

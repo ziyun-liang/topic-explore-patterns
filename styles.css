@@ -507,14 +507,149 @@ svg { display: block; }
 	margin: 0 0 var(--s-4);
 }
 
-.cards-row { display: flex; gap: var(--s-3); }
+/* ---------- Card row ----------
+   Was a static 2-up row of flat thumbnails; now a horizontal scroller carrying
+   one card of each content kind. Same recipe as .portal-strip.
 
+   The negative margin lets the row bleed to its container's edge while the
+   matching padding holds the first card at the gutter — so cards scroll off the
+   screen edge (Carousel/Tabs) or the panel edge (Accordion) rather than stopping
+   short inside the text column. It assumes the container's own horizontal padding
+   equals --gutter, which is why .acc-body sets exactly that. */
+.cards-row {
+	display: flex;
+	gap: var(--s-3);
+	margin-inline: calc(-1 * var(--gutter));
+	padding-inline: var(--gutter);
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+	/* Required, not decorative. The snapport defaults to the PADDING box, whose
+	   left edge is the border edge — so scroll-snap-align:start aligned the first
+	   card to x=0 and mandatory snapping scrolled the row by 20px to get it there,
+	   eating the gutter. This insets the snapport so the snap target is the gutter.
+	   .tab-strip already carries the same line for the same reason. */
+	scroll-padding-inline: var(--gutter);
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+.cards-row::-webkit-scrollbar { display: none; }
+
+/* 88% leaves the next card peeking, matching the Figma's 355-in-400. Sizing lives
+   on the ROW's children rather than on .card itself, because the swipe deck reuses
+   .card with position:absolute/inset:0, where flex-basis and aspect-ratio are both
+   inert. */
+.cards-row > .card {
+	flex: 0 0 88%;
+	aspect-ratio: 355 / 473;
+	scroll-snap-align: start;
+}
+
+/* Trailing runway, so the LAST card can still snap flush to the left edge — the
+   scroll range would otherwise clamp ~40px short of it. 12% is the exact
+   complement of the 88% above: keep the two in sync if either changes.
+   A margin, not padding-right on the row: padding shrinks the content box that
+   the 88% resolves against, which is the bug that once silently collapsed
+   Portal's peek into a cropped 2-up. */
+.cards-row > .card:last-child { margin-right: 12%; }
+
+/* ---------- Content cards ----------
+   Three kinds — Excerpt, Video, Summary — from Figma node 199:4522. All three
+   share one box; only the inner arrangement differs.
+
+   The fills come straight off this project's own ramp (sampled from the Figma
+   render, not eyeballed): card --g-2, bars/glyph/rule --g-4. Note that puts the
+   ramp one step deeper than M3 named it — --g-2 was "placeholder well" and is now
+   "card surface", --g-4 was "photo-glyph stroke" and is now bars. The
+   grey-fill-means-tappable rule still holds: a content card IS tappable. */
 .card {
-	flex: 1 1 0;
-	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: var(--s-5);
+	padding: var(--s-5);
+	background: var(--g-2);
+	border-radius: var(--r-lg);
+	/* Belt and braces: the box is a fixed aspect-ratio, so a future copy change
+	   that lengthens the excerpt can't spill out of it. */
+	overflow: hidden;
+}
+
+/* Bars are 16px/25px, not .ph-bar's 9px. Deliberate: .ph-bar was sized for a
+   ~170px thumbnail and reads as dust inside a card this size. .ph-bar is left
+   untouched because Portal still uses it. */
+.card-bar {
+	height: 16px;
+	border-radius: var(--r-pill);
+	background: var(--g-4);
+	flex: 0 0 auto;
+}
+
+.card-bar--head { height: 25px; }
+
+/* The glyph area takes whatever height the card's fixed box leaves over, which is
+   what centres the photo and play marks vertically as drawn. */
+.card-glyph {
+	flex: 1;
+	min-height: 0;
+	display: grid;
+	place-items: center;
+	color: var(--g-4);
+}
+
+.card-glyph svg { width: 28%; height: auto; }
+
+/* Bottom group for Summary and Video. margin-top:auto pins it to the base of the
+   card whatever the glyph area does. */
+.card-foot {
 	display: flex;
 	flex-direction: column;
 	gap: var(--s-2);
+	margin-top: auto;
+}
+
+/* --- Excerpt --- */
+
+.card-byline {
+	display: flex;
+	align-items: center;
+	gap: var(--s-3);
+	flex: 0 0 auto;
+}
+
+.card-avatar {
+	flex: 0 0 auto;
+	width: 50px;
+	height: 50px;
+	border-radius: var(--r-pill);
+	background: var(--g-4);
+}
+
+.card-byline .card-bar { width: 62px; }
+
+/* The rule stretches to the text block's height by default flex alignment — it
+   marks the quote, so it should match the quote, not the card. */
+.card-quote {
+	display: flex;
+	gap: var(--s-3);
+	flex: 1;
+	min-height: 0;
+}
+
+.card-rule {
+	flex: 0 0 8px;
+	border-radius: var(--r-pill);
+	background: var(--g-4);
+}
+
+/* space-between rather than a fixed gap: the line count is fixed at 8, so letting
+   them distribute fills the card at any size without clipping the last one or
+   leaving a slab of dead space. */
+.card-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
 }
 
 /* ---------- Placeholders ----------
@@ -574,18 +709,37 @@ svg { display: block; }
 /* Shape, fill and mask come from the shared pill-row rules above. */
 .tab-strip { padding-bottom: var(--s-6); }
 
-/* Reserve two lines for the question so the cards below never move when you
-   switch tabs. Measured at 390px: the short questions wrap to 1 line and the
-   long ones to 2, so without this the cards jumped 25px mid-swap — a layout
-   shift and a fade at the same time, which reads as jank and undercuts the swap
-   animation. 2.7em is 2 x the 1.35 line-height, resolved against .q-title's own
-   font-size, so it tracks --t-title instead of hardcoding 51px. It's a floor,
-   not a cap: a 3-line question still grows normally. */
-.tab-content .q-title { min-height: 2.7em; }
+/* The gutter the card row bleeds back out of. .tab-content used to hold a
+   .direction, which brought its own gutter; now it holds the row directly, so
+   without this the row bleeds 20px past BOTH screen edges and the cards compute
+   88% of the wrong width (measured: 430px-wide row, 343px cards, vs 390/308
+   everywhere else). */
+.tab-content { padding-inline: var(--gutter); }
+
+/* The two-line min-height that used to live here is gone with the question
+   heading itself (Figma 199:5046 — the active pill IS the question, so repeating
+   it below was saying the same thing twice). The 25px card jump it existed to
+   prevent can't recur either: every card is now the same fixed aspect-ratio, so
+   swapping tabs can't change the content's height. */
 
 /* ---------- Accordion (#/accordion) ---------- */
 
-.acc-item { padding: 0 var(--gutter); }
+/* The gutter lives on the list, not the item, because the item now carries the
+   grey — leaving it on the item would bleed the fill into the gutter. */
+.acc-list { padding: 0 var(--gutter); }
+
+/* The whole open item is ONE grey block wrapping header AND cards (Figma
+   199:5146), rather than a grey header with content loose on white below it. The
+   grey therefore moved here from .acc-header.
+   overflow:hidden is load-bearing twice over: it clips the bleeding card row at
+   the panel edge instead of letting it escape, and it keeps the fill inside the
+   rounded corners. */
+.acc-item {
+	background: var(--g-1);
+	border-radius: var(--r-lg);
+	overflow: hidden;
+}
+
 .acc-item + .acc-item { margin-top: var(--s-3); }
 
 .acc-header {
@@ -598,7 +752,7 @@ svg { display: block; }
 	padding: var(--s-5);
 	border: none;
 	border-radius: var(--r-lg);
-	background: var(--g-1);
+	background: transparent;
 	cursor: pointer;
 	font-size: var(--t-title);
 	font-weight: 500;
@@ -621,6 +775,12 @@ svg { display: block; }
 }
 
 .acc-item.open .chevron { transform: rotate(180deg); }
+
+/* The header has no fill of its own now, so the shared scale(0.97) would move
+   only the text. A fill on press restores the feedback — same fix the switcher's
+   inactive segments needed. --g-2 is darker than the panel, so it reads as
+   pressed in. */
+.acc-header:active { background: var(--g-2); }
 
 /* Height animation via grid-template-rows 0fr→1fr. This is the only way to
    transition to a CONTENT-DRIVEN height without measuring scrollHeight in JS:
@@ -661,22 +821,38 @@ svg { display: block; }
    Measured, not guessed: grid-template-rows computed to 28px instead of 0px.
    Putting the padding inside the overflow:hidden box lets it be clipped away.
    Scoped to .acc-body so the shared .cards-row used by carousel/tabs is
-   untouched. */
-.acc-body .cards-row { padding: var(--s-5) 0 var(--s-2); }
+   untouched.
+
+   margin-inline is cancelled here for the same reason. Elsewhere the row bleeds
+   out of its container's gutter to reach the screen edge; inside an accordion
+   panel there is no horizontal padding to cancel (it can't live on .acc-body,
+   per above), so bleeding would push the cards flush against the panel edge. At
+   0 the row spans the panel and its own padding-inline holds the cards inset,
+   with .acc-item's overflow clipping the scroll at the panel edge.
+   Top padding is small because .acc-header already contributes 20px below its
+   text; together they make the ~28px the Figma shows. */
+.acc-body .cards-row {
+	margin-inline: 0;
+	padding-block: var(--s-2) var(--s-5);
+}
 
 /* ---------- Card Swipe (#/swipe) ---------- */
 
 .swipe-group { padding: 0 var(--gutter); }
 .swipe-group + .swipe-group { margin-top: var(--group-gap); }
 
+/* Sized and aligned to match the scrolling rows: same 88% width, same
+   355/473 box. Was a narrow 62%/248px stack centred in the column — the new cards
+   are content-bearing enough that centring a small deck read as a different
+   object from the same cards elsewhere. */
 .deck {
 	position: relative;
-	width: 62%;
-	max-width: 248px;
-	aspect-ratio: 248 / 357;
-	/* The stacked cards sit below the front one, so the bottom margin has to
-	   clear them before the hint. */
-	margin: var(--s-4) auto var(--s-7);
+	width: 88%;
+	aspect-ratio: 355 / 473;
+	/* Left-aligned now, not `auto` — the deck starts at the gutter like every
+	   other card row. The bottom margin still has to clear the stacked cards
+	   before the hint. */
+	margin: var(--s-4) 0 var(--s-7);
 	touch-action: pan-y;
 }
 
