@@ -626,12 +626,20 @@ svg { display: block; }
 
 .card-byline .card-bar { width: 62px; }
 
+/* Natural height and vertically centred, NOT stretched to fill (Figma 201:5664).
+   The stretch was what made this card read heavy: .card-quote took flex:1 and the
+   lines spread with space-between, so eight bars fanned out across every available
+   pixel and the block ran from just under the byline to the bottom padding with no
+   air anywhere. Figma holds the content at ~68% of the card height and splits the
+   slack top and bottom. */
+.card--excerpt { justify-content: center; }
+
 /* The rule stretches to the text block's height by default flex alignment — it
    marks the quote, so it should match the quote, not the card. */
 .card-quote {
 	display: flex;
 	gap: var(--s-3);
-	flex: 1;
+	flex: 0 0 auto;
 	min-height: 0;
 }
 
@@ -641,15 +649,17 @@ svg { display: block; }
 	background: var(--g-4);
 }
 
-/* space-between rather than a fixed gap: the line count is fixed at 8, so letting
-   them distribute fills the card at any size without clipping the last one or
-   leaving a slab of dead space. */
+/* A fixed gap, not space-between. space-between was letting the eight lines fan
+   out to whatever height was going, which is the whole reason the card felt heavy.
+   10px matches the Figma's 26px line pitch (16px bar + 10px gap) — an absolute
+   value like the bar heights and the avatar above, because this component is
+   dimensioned from the Figma rather than from the spacing scale. */
 .card-body {
 	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	justify-content: space-between;
+	gap: 10px;
 }
 
 /* ---------- Placeholders ----------

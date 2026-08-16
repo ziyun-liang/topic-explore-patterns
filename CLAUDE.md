@@ -566,6 +566,20 @@ promote into a milestone once there's enough shape to act on.
     `--r-md` image well is gone from these cards).
   - **Not yet on a real phone.** Bar weights and card size are the things to judge
     there.
+  - **Follow-up the same day — the excerpt card was too heavy** (Lindsey, ref Figma
+    `201:5664`). Cause was the stretch: `.card-quote` had `flex: 1` and `.card-body`
+    used `justify-content: space-between`, so the eight lines fanned out across every
+    available pixel and the block ran from the byline to the bottom padding with no
+    air. Now natural height, `justify-content: center` on `.card--excerpt`, and a
+    fixed 10px line gap matching the Figma's 26px pitch. Air above and below went
+    **20px → 49px**, and the text block is exactly 198px like the Figma.
+
+    **Residual worth knowing:** content is 76% of card height against the Figma's
+    68%. That's because the card is 13% shorter than the Figma's 473px while keeping
+    its absolute part sizes (25/16px bars, 50px avatar), so the parts are
+    proportionally ~15% heavier. If more air is ever wanted, the cheap lever is
+    **dropping one excerpt line** (8 → 7), which lands at 70% with 61/62px air —
+    essentially the Figma proportion — rather than rescaling every part.
 
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's
