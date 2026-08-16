@@ -31,26 +31,84 @@
 		return div.innerHTML;
 	}
 
+	// ---------- Icons ----------
+	//
+	// Inline SVG rather than text glyphs. The previous '⌄' was a modifier
+	// letter, not a chevron — it sat below the baseline and read as a typo, and
+	// '→' / '‹' inherited whatever optical weight the system font happened to
+	// give. These are stroked, currentColor, and optically consistent.
+
+	var ICON_PATHS = {
+		'arrow-right': '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+		'chevron-left': '<path d="m15 18-6-6 6-6"/>',
+		'chevron-down': '<path d="m6 9 6 6 6-6"/>',
+		image: '<rect width="18" height="18" x="3" y="3" rx="2"/>' +
+			'<circle cx="9" cy="9" r="2"/>' +
+			'<path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>'
+	};
+
+	function icon(name, size) {
+		return (
+			'<svg width="' + (size || 16) + '" height="' + (size || 16) + '" ' +
+			'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+			'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" ' +
+			'aria-hidden="true">' + ICON_PATHS[name] + '</svg>'
+		);
+	}
+
+	// Deterministic (not random) so screenshots stay stable between runs, but
+	// varied enough that a row or deck doesn't look mechanically cloned.
+	var BAR_WIDTHS = [
+		['100%', '72%', '38%'],
+		['92%', '58%', '44%'],
+		['100%', '84%', '34%']
+	];
+
+	function barsHTML(variant) {
+		var w = BAR_WIDTHS[variant % BAR_WIDTHS.length];
+		return (
+			'<div class="ph-bar" style="width:' + w[0] + '"></div>' +
+			'<div class="ph-bar" style="width:' + w[1] + '"></div>' +
+			'<div class="ph-bar ph-bar--meta" style="width:' + w[2] + '"></div>'
+		);
+	}
+
+	function imgWellHTML() {
+		return '<div class="ph-img">' + icon('image', 28) + '</div>';
+	}
+
+	// 3 words, not 4: at 15px a 4-word label ate ~60% of a 390px strip, so barely
+	// one and a half tabs fit. The questions all open with distinct subjects
+	// ("How are schools", "What are teachers", "Where are districts"), so three
+	// words is still enough to tell them apart.
 	function shortLabel(question, maxWords) {
-		maxWords = maxWords || 4;
+		maxWords = maxWords || 3;
 		var words = question.replace(/\?$/, '').split(' ');
 		if (words.length <= maxWords) return words.join(' ');
 		return words.slice(0, maxWords).join(' ') + '…';
 	}
 
+	// Flat thumbnail skeleton — carousel / tabs / accordion. Content, so it sits
+	// on white with no fill of its own (grey fill is reserved for tappables).
 	function cardsRowHTML(count) {
 		var html = '<div class="cards-row">';
 		for (var i = 0; i < count; i++) {
-			html +=
-				'<div class="card">' +
-				'<div class="card-img"></div>' +
-				'<div class="card-bar"></div>' +
-				'<div class="card-bar short"></div>' +
-				'<div class="card-bar date"></div>' +
-				'</div>';
+			html += '<div class="card">' + imgWellHTML() + barsHTML(i) + '</div>';
 		}
 		html += '</div>';
 		return html;
+	}
+
+	// Filled card skeleton — swipe deck / portal strip, where a card reads as a
+	// physical object rather than a thumbnail. Two bars instead of three: these
+	// cards are taller and narrower, and a third bar crowds them.
+	function phCardInnerHTML(variant) {
+		var w = BAR_WIDTHS[variant % BAR_WIDTHS.length];
+		return (
+			imgWellHTML() +
+			'<div class="ph-bar" style="width:' + w[0] + '"></div>' +
+			'<div class="ph-bar ph-bar--meta" style="width:' + w[2] + '"></div>'
+		);
 	}
 
 	function directionHTML(direction, cardCount) {
@@ -121,7 +179,7 @@
 						'<div class="acc-item' + (isOpen ? ' open' : '') + '">' +
 						'<button class="acc-header" data-i="' + i + '">' +
 						'<span>' + escapeHTML(d.question) + '</span>' +
-						'<span class="chevron">⌄</span>' +
+						'<span class="chevron">' + icon('chevron-down') + '</span>' +
 						'</button>' +
 						(isOpen
 							? '<div class="acc-body">' + cardsRowHTML(CARD_COUNTS.accordion) + '</div>'
@@ -152,16 +210,21 @@
 		var cards = [];
 		for (var i = 0; i < count; i++) {
 			var c = document.createElement('div');
-			c.className = 'deck-card';
+			c.className = 'deck-card ph-card';
+			c.innerHTML = phCardInnerHTML(i);
 			deck.appendChild(c);
 			cards.push(c);
 		}
 
+		// Depth comes from offset + scale + the card's own shadow, NOT from
+		// fading opacity: the cards share a fill that's barely off white, so
+		// fading them made the stack disappear entirely rather than recede.
 		function layout() {
 			cards.forEach(function (el, idx) {
 				el.style.zIndex = String(count - idx);
-				el.style.opacity = String(Math.max(1 - idx * 0.1, 0.6));
-				el.style.transform = 'translateY(' + idx * 10 + 'px) scale(' + (1 - idx * 0.04) + ')';
+				el.style.opacity = '1';
+				el.style.transform =
+					'translateY(' + idx * 12 + 'px) scale(' + (1 - idx * 0.045) + ')';
 			});
 		}
 		layout();
@@ -214,7 +277,7 @@
 		deck.addEventListener('lostpointercapture', endDrag);
 
 		var extras = '';
-		if (withHint) extras = '<p class="deck-hint">← drag to cycle →</p>';
+		if (withHint) extras = '<p class="deck-hint">Drag to cycle</p>';
 
 		return { el: deck, extrasHTML: extras };
 	}
@@ -240,7 +303,8 @@
 			.map(function (d) {
 				var cards = '';
 				for (var i = 0; i < CARD_COUNTS.portal; i++) {
-					cards += '<div class="portal-card"></div>';
+					cards += '<div class="portal-card ph-card">' +
+						phCardInnerHTML(i) + '</div>';
 				}
 				return (
 					'<div class="portal-group">' +
@@ -271,52 +335,81 @@
 				return (
 					'<a class="menu-item" href="#/' + p.id + '">' +
 					'<span class="menu-item-name">' + p.label + '</span>' +
-					'<span class="menu-item-arrow">→</span>' +
+					'<span class="menu-item-arrow">' + icon('arrow-right') + '</span>' +
 					'</a>'
 				);
 			}).join('') +
 			'</div>';
 	}
 
-	function renderPatternView(shell, id) {
+	function renderPatternView(shell, app, id) {
 		var pattern = PATTERNS.filter(function (p) { return p.id === id; })[0];
 
 		shell.innerHTML =
 			'<header class="pattern-header">' +
-			'<a class="back-btn" href="#/">‹ All patterns</a>' +
+			'<a class="back-btn" href="#/" aria-label="All patterns">' +
+			icon('chevron-left') +
+			'</a>' +
 			'<span class="topic-label">' + escapeHTML(CONTENT.topic) + '</span>' +
 			'<span class="pattern-name">' + pattern.label + '</span>' +
 			'</header>' +
-			'<main class="pattern-main"></main>' +
-			'<nav class="switcher">' +
+			'<main class="pattern-main"></main>';
+
+		// The switcher is a SIBLING of .app-shell, not a child. The desktop
+		// device frame clips its shell with overflow, and the switcher has to
+		// escape that to sit out on the field below the phone.
+		var nav = document.createElement('nav');
+		nav.className = 'switcher';
+		nav.innerHTML =
+			'<div class="switcher-scroll">' +
 			PATTERNS.map(function (p) {
 				return (
-					'<a class="switcher-btn' + (p.id === id ? ' active' : '') + '" href="#/' + p.id + '">' +
-					p.label +
-					'</a>'
+					'<a class="switcher-btn' + (p.id === id ? ' active' : '') +
+					'" href="#/' + p.id + '">' + p.label + '</a>'
 				);
 			}).join('') +
-			'</nav>';
+			'</div>';
+		app.appendChild(nav);
 
 		var main = shell.querySelector('.pattern-main');
 		var directions = CONTENT.patterns[id].directions;
 		RENDERERS[id](main, directions);
+
+		// Keep the active pill in view when arriving by deep link — with 5
+		// pills the last two are off-screen at phone width.
+		var scroller = nav.querySelector('.switcher-scroll');
+		var activePill = scroller.querySelector('.switcher-btn.active');
+		if (activePill && scroller.scrollWidth > scroller.clientWidth) {
+			scroller.scrollLeft = Math.max(
+				0,
+				activePill.offsetLeft -
+					(scroller.clientWidth - activePill.offsetWidth) / 2
+			);
+		}
 	}
 
 	function render() {
 		var app = document.getElementById('app');
 		var hash = location.hash.replace(/^#\/?/, '');
 
+		// .device is a passthrough at phone width and becomes the frame on
+		// desktop; it also owns the home indicator, which must not scroll with
+		// the shell's content.
+		var device = document.createElement('div');
+		device.className = 'device';
+
 		var shell = document.createElement('div');
 		shell.className = 'app-shell';
+		device.appendChild(shell);
+
 		app.innerHTML = '';
-		app.appendChild(shell);
+		app.appendChild(device);
 
 		if (!hash || !CONTENT.patterns[hash]) {
 			renderMenu(shell);
 			return;
 		}
-		renderPatternView(shell, hash);
+		renderPatternView(shell, app, hash);
 	}
 
 	window.addEventListener('hashchange', render);
