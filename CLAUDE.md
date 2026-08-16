@@ -144,9 +144,13 @@ question to resolve at kickoff — these are deliberately *not* resolved here.
   2026-08-16). The open question — does 5-way switching belong in a persistent
   bottom bar — is **answered: no.** The switcher is *harness* chrome, not
   product chrome; a bottom tab bar reads as app navigation and contaminates the
-  pattern being evaluated. It's now a horizontally scrollable pill row that
-  lifts out of the phone entirely on desktop (≥900px) and sits on the field
-  below the frame. Menu rows also went from 55px to ~76px tall.
+  pattern being evaluated. It lifts out of the phone entirely on desktop
+  (≥900px) and sits on the field below the frame. Menu rows also went from 55px
+  to ~76px tall.
+
+  *Updated later on 2026-08-16:* it was a scrollable **pill row** sharing its CSS
+  with the tab strip. It's now a **segmented toggle** — see the session log for
+  why. The two controls must stay visually distinct.
 
   *Still open — two responsive bugs found 2026-08-16 and consciously deferred*
   (Lindsey's call: "pause on this change first"). Both measured, don't
@@ -398,6 +402,41 @@ promote into a milestone once there's enough shape to act on.
   - Note the eyebrow removal earlier in the day already took most routes to 3
     type sizes; that holds (30/19/15, minStep 1.27×). Audit still within targets,
     7/7 behaviour tests, 0 console errors.
+
+- **2026-08-16 (fifth pass) — switcher became a segmented toggle.** Lindsey's
+  sketch, and her reasoning: the switcher and the Tabs strip were the same pill
+  shape on the same screen, so people would confuse them.
+  - **The shared CSS rule was split, on purpose.** Its old comment said "the tab
+    strip and the switcher are the same control shape, so they share one rule and
+    can't drift apart" — that sharing *was* the bug. Two controls with an
+    identical shape read as the same kind of thing, and these aren't: the tab
+    strip is the pattern under test, the switcher navigates the harness. **They
+    are now deliberately different shapes. Don't re-merge the rules.**
+  - **One grey track, active segment lifted out in white,** segments abutting
+    (`gap: 0` — the track does the grouping, and gaps would pull it back toward
+    reading as separate pills). The white-on-grey move is this file's existing
+    vocabulary, not a new invention: same trick as `.menu-item-arrow`.
+  - **Typography is untouched** — 15px/500 on both controls, per Lindsey. Only
+    the container differs. `.tab`'s rule now says so explicitly so nobody
+    "harmonises" them later.
+  - **The breakpoints differ, and that's deliberate.** Phone: grey track, white
+    active. Desktop: **white** track, dark active. A grey track can't be used on
+    the desktop field — `--g-1` #f1f1f1 against `--field` #e6e6e6 is 11/255
+    apart, exactly the indistinguishable-greys problem M3 removed. Out there
+    white reads as "object" and grey as "ground", which is already how the phone
+    frame works, so the track goes white and the active segment takes the dark
+    end. The rule spanning both is **"the active segment takes the far end of the
+    ramp from its own track"**, not a fixed colour.
+  - **No edge mask on the switcher, unlike `.tab-strip`.** A toggle needs crisp
+    rounded ends; fading the track's own edges would dissolve the boundary that
+    makes it one control. The border-radius clips the scrolling segments instead.
+  - **Inactive segments get a fill on press.** With no fill of their own the
+    shared `scale(0.97)` moved only the text, which is nearly no feedback.
+  - Verified: active segment still scrolls fully into view on deep link
+    (`#/portal` → track scrollLeft 126, segment inset 5px from the right edge);
+    7/7 behaviour tests; audit within targets — and distinct greys per screen
+    actually dropped 5 → 4 on most routes, since inactive segments are now
+    transparent.
 
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's

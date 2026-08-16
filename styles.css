@@ -340,7 +340,10 @@ svg { display: block; }
 	width: 100%;
 	max-width: var(--page-w);
 	z-index: 20;
-	padding: var(--s-3) 0 max(var(--s-3), env(safe-area-inset-bottom));
+	/* The gutter moved here from the scroller when the switcher became a track:
+	   the TRACK is what needs insetting from the phone's edges now, and its own
+	   4px padding is the inset for the active segment. */
+	padding: var(--s-3) var(--gutter) max(var(--s-3), env(safe-area-inset-bottom));
 	background: var(--g-0);
 }
 
@@ -356,15 +359,18 @@ svg { display: block; }
 	pointer-events: none;
 }
 
-/* ---------- Shared pill row ----------
-   The tab strip and the switcher are the same control shape, so they share one
-   rule and can't drift apart. The switcher's pills live in an inner scroller
-   (.switcher-scroll) rather than on .switcher itself, because the mask below
-   would otherwise clip the parent's top-fade pseudo-element, which sits outside
-   the box. The gutter is padding *inside* the scroller, so it doubles as snap
-   runway at both ends. */
+/* ---------- Tab strip ----------
+   UPDATE 2026-08-16: the switcher used to share this rule, on the reasoning that
+   "the tab strip and the switcher are the same control shape, so they can't
+   drift apart." That was exactly the problem — two controls with an identical
+   shape on one screen read as the same KIND of thing, and these two aren't: the
+   tab strip is the pattern under test, the switcher navigates the harness. They
+   are now deliberately different shapes. Keep them that way.
 
-.switcher-scroll,
+   The switcher's segments still live in an inner element (.switcher-scroll)
+   rather than on .switcher itself, because clipping on the parent would cut off
+   its top-fade pseudo-element, which sits outside the box. */
+
 .tab-strip {
 	display: flex;
 	gap: var(--s-2);
@@ -383,7 +389,57 @@ svg { display: block; }
 .switcher-scroll::-webkit-scrollbar,
 .tab-strip::-webkit-scrollbar { display: none; }
 
-.switcher-btn,
+/* ---------- Switcher: segmented toggle ----------
+   One grey track holding all five segments, with the active one lifted out in
+   white. The white-on-grey move is this file's existing vocabulary, not a new
+   invention — it's the same trick as .menu-item-arrow, where returning to white
+   on a grey block is what makes the affordance read without a shadow.
+
+   Segments abut (gap: 0). The track is what groups them, and gaps would pull it
+   back toward reading as a row of separate pills — the thing this change exists
+   to stop. */
+
+.switcher-scroll {
+	display: flex;
+	gap: 0;
+	background: var(--g-1);
+	border-radius: var(--r-pill);
+	/* Inset so the active segment sits ON the track rather than filling it. */
+	padding: 4px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	/* No edge mask here, unlike .tab-strip: a toggle needs crisp rounded ends,
+	   and fading the track's own edges to transparent would dissolve the very
+	   boundary that makes it read as one control. The border-radius clips the
+	   scrolling segments instead. */
+}
+
+.switcher-btn {
+	flex: 0 0 auto;
+	border: none;
+	border-radius: var(--r-pill);
+	background: transparent;
+	color: var(--ink-2);
+	font-size: var(--t-body);
+	font-weight: 500;
+	padding: var(--s-3) 18px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.switcher-btn.active {
+	background: var(--g-0);
+	color: var(--ink);
+}
+
+/* Inactive segments have no fill, so the shared scale(0.97) alone would give
+   almost no press feedback — only the text would move. A fill on press restores
+   it. --g-2 is darker than the track, so it reads as pressed-in. */
+.switcher-btn:not(.active):active { background: var(--g-2); }
+
+/* Same type and padding as .switcher-btn above — deliberately identical, per
+   Lindsey: only the CONTAINER differs between the two controls, not the
+   typography. */
 .tab {
 	flex: 0 0 auto;
 	border: none;
@@ -397,7 +453,6 @@ svg { display: block; }
 	cursor: pointer;
 }
 
-.switcher-btn.active,
 .tab.active { background: var(--ink); color: var(--g-0); }
 
 /* ---------- Shared: question + card row ---------- */
@@ -749,17 +804,26 @@ svg { display: block; }
 
 	.switcher::before { display: none; }
 
+	/* The track goes WHITE out here, and the active segment goes dark. On the
+	   grey field, white reads as "object" and grey as "ground" — that's already
+	   how the phone frame itself works, so a grey track would dissolve into the
+	   field (--g-1 #f1f1f1 against --field #e6e6e6 is 11/255 apart, exactly the
+	   indistinguishable-greys problem M3 removed). The rule holding both
+	   breakpoints together is "the active segment takes the far end of the ramp
+	   from its own track", not a fixed colour.
+
+	   nowrap, not wrap: there's room for all five out here, and a wrapped track
+	   would break into two stacked lozenges. */
 	.switcher-scroll {
+		background: var(--g-0);
 		overflow: visible;
-		padding-inline: 0;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		justify-content: center;
-		-webkit-mask-image: none;
-		mask-image: none;
 	}
 
-	.switcher-btn { background: var(--g-0); }
+	.switcher-btn { background: transparent; }
 	.switcher-btn.active { background: var(--ink); color: var(--g-0); }
+	.switcher-btn:not(.active):active { background: var(--g-1); }
 }
 
 /* ---------- Reduced motion ----------
