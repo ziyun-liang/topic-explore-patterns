@@ -62,7 +62,20 @@
 	--frame-h: 844px;
 
 	--font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+	/* Motion — ONE set of values, used by all five patterns without exception.
+	   This prototype's job is a head-to-head comparison: if one pattern's
+	   entrance is more charming than another's, a reviewer prefers it for the
+	   wrong reason. Motion has to be a constant, not a variable. (Same
+	   reasoning as the switcher decision — harness craft must not contaminate
+	   the pattern being evaluated.) */
 	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--dur-press: 160ms;  /* press feedback */
+	--dur-enter: 280ms;  /* mount cascade, per item */
+	--dur-swap: 200ms;   /* tab content re-enter — tighter, reader is oriented */
+	--dur-height: 260ms; /* accordion open/close */
+	--stagger: 40ms;
+	--rise: 8px;
 }
 
 * { box-sizing: border-box; }
@@ -91,9 +104,9 @@ svg { display: block; }
 .tab,
 .switcher-btn,
 .back-btn {
-	transition: transform 160ms var(--ease-out),
-	            background-color 160ms var(--ease-out),
-	            color 160ms var(--ease-out);
+	transition: transform var(--dur-press) var(--ease-out),
+	            background-color var(--dur-press) var(--ease-out),
+	            color var(--dur-press) var(--ease-out);
 }
 
 .menu-item:active,
@@ -109,6 +122,51 @@ svg { display: block; }
 	.switcher-btn:not(.active):hover,
 	.back-btn:hover { background-color: #e9e9e9; }
 }
+
+/* ---------- Appear cascade ----------
+   Content arriving, two-tier: the header lands, then each question-group
+   staggers in behind it. Cards arrive WITH their group rather than staggering
+   individually — the group is the unit each pattern is organizing, so that's
+   what the motion should express.
+
+   One keyframe drives the whole thing; JS only stamps --i (see cascade() in
+   patterns.js). Worst case is the 5-item accordion: last item starts at 160ms
+   and lands at 440ms.
+
+   Two things here are easy to get wrong:
+
+   · `both`, not `forwards`. `forwards` does not hold the START state during
+     animation-delay, so every staggered item flashes in at full opacity and
+     then animates — which defeats the stagger entirely. `both` (i.e.
+     `backwards` too) is what makes it work.
+
+   · Keyframes are correct here, despite the usual "prefer transitions for
+     interruptible UI" rule. That rule is about retargeting an element
+     mid-flight. This is a pure mount: the router rebuilds #app from scratch,
+     so these nodes are brand new every time and a keyframe restarting on a
+     fresh element IS the desired behaviour. Don't convert this to a
+     transition later. (.tab-content is the one persistent node that
+     re-animates — see .swap-in below for how that case differs.) */
+
+@keyframes rise-in {
+	from { opacity: 0; transform: translateY(var(--rise)); }
+	to   { opacity: 1; transform: none; }
+}
+
+.rise-in {
+	animation: rise-in var(--dur-enter) var(--ease-out) both;
+	animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* Tab content re-entering after a tab change. Shallower rise and faster than
+   the mount, deliberately: the reader is already oriented, only the content
+   under the strip changed. */
+@keyframes swap-in {
+	from { opacity: 0; transform: translateY(4px); }
+	to   { opacity: 1; transform: none; }
+}
+
+.swap-in { animation: swap-in var(--dur-swap) var(--ease-out) both; }
 
 /* ---------- Shell ---------- */
 
@@ -434,12 +492,54 @@ svg { display: block; }
 	border-radius: var(--r-pill);
 	background: var(--g-0);
 	color: var(--ink);
-	transition: transform 200ms var(--ease-out);
+	/* Matched to --dur-height so the chevron and the panel finish together —
+	   they read as one gesture, and a 60ms mismatch is visible in slow motion. */
+	transition: transform var(--dur-height) var(--ease-out);
 }
 
 .acc-item.open .chevron { transform: rotate(180deg); }
 
-.acc-body { padding: var(--s-5) 0 var(--s-2); }
+/* Height animation via grid-template-rows 0fr→1fr. This is the only way to
+   transition to a CONTENT-DRIVEN height without measuring scrollHeight in JS:
+   the outer grid animates its single row, and the inner element is what gets
+   clipped. Needs Chrome 117+ / Safari 17.4+ / Firefox 120+; anywhere older it
+   simply snaps, which is exactly the behaviour this replaced. */
+.acc-body-outer {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-height) var(--ease-out);
+}
+
+.acc-item.open .acc-body-outer { grid-template-rows: 1fr; }
+
+.acc-body {
+	overflow: hidden;
+	/* Required. Grid items default to min-height:auto, which refuses to shrink
+	   below content size — without this the row never collapses to 0. */
+	min-height: 0;
+	/* Asymmetric on purpose. Closing: fade out fast, so the cards are gone
+	   before the height lands instead of being visibly guillotined. */
+	opacity: 0;
+	transition: opacity var(--dur-press) var(--ease-out);
+}
+
+/* Opening: let the height lead by 60ms, so cards don't appear inside a panel
+   that hasn't opened yet. */
+.acc-item.open .acc-body {
+	opacity: 1;
+	transition: opacity var(--dur-height) var(--ease-out) 60ms;
+}
+
+/* The body's inset lives on its CHILD, not on .acc-body itself, and this is
+   load-bearing: padding on a collapsing grid item cannot collapse. min-height:0
+   lets the item's CONTENT shrink to zero, but padding is always laid out, so
+   0fr floored at 28px (20 + 8) and every closed panel kept a 28px ghost —
+   which pushed the last item down 56px and clipped it under the switcher.
+   Measured, not guessed: grid-template-rows computed to 28px instead of 0px.
+   Putting the padding inside the overflow:hidden box lets it be clipped away.
+   Scoped to .acc-body so the shared .cards-row used by carousel/tabs is
+   untouched. */
+.acc-body .cards-row { padding: var(--s-5) 0 var(--s-2); }
 
 /* ---------- Card Swipe (#/swipe) ---------- */
 
@@ -634,8 +734,15 @@ svg { display: block; }
 }
 
 /* ---------- Reduced motion ----------
-   Fewer and gentler, not zero: the press feedback and the chevron rotate are
-   the only motion here, and both aid comprehension. Drop the movement. */
+   Fewer and gentler, not zero. Keep the fades — knowing that content just
+   arrived aids comprehension, and opacity doesn't trigger motion sickness.
+   Drop everything that MOVES: the rise, the stagger, the panel height, the
+   chevron rotate, the press scale. */
+
+@keyframes fade-in {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
 
 @media (prefers-reduced-motion: reduce) {
 	.menu-item:active,
@@ -645,4 +752,17 @@ svg { display: block; }
 	.back-btn:active { transform: none; }
 
 	.deck-card { transition: opacity .2s ease; }
+
+	/* Same class, movement-free keyframe, no stagger. */
+	.rise-in,
+	.swap-in {
+		animation-name: fade-in;
+		animation-duration: var(--dur-press);
+		animation-delay: 0ms;
+	}
+
+	.acc-body-outer,
+	.acc-body,
+	.acc-item.open .acc-body,
+	.acc-header .chevron { transition: none; }
 }

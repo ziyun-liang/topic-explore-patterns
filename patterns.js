@@ -31,6 +31,52 @@
 		return div.innerHTML;
 	}
 
+	// ---------- Appear cascade ----------
+	//
+	// Stamps --i on each element so a single CSS keyframe (.rise-in in
+	// styles.css) drives the whole staggered entrance. Deliberately dumb: all
+	// the timing lives in tokens, so there is exactly one place to retune it
+	// and no pattern can drift from the others.
+	//
+	// Setting a custom property is a style recalc — fine here, because this runs
+	// ONCE per mount. This is not the inheritable-CSS-var perf trap, which is
+	// about updating a var on a parent every frame of a drag.
+	//
+	// Returns the next free index, so callers can cascade two collections in one
+	// continuous sequence.
+	function cascade(elements, startIndex) {
+		var i = startIndex || 0;
+		Array.prototype.forEach.call(elements, function (el) {
+			if (!el) return;
+			el.style.setProperty('--i', i++);
+			el.classList.add('rise-in');
+			clearOnFinish(el, 'rise-in');
+		});
+		return i;
+	}
+
+	// Strips an entrance class once it has played. Neither reason is cosmetic:
+	//
+	//  · `animation-fill-mode: both` keeps PINNING opacity and transform to the
+	//    keyframe's end values for as long as the class is on the element — where
+	//    it silently outranks any later CSS touching either property. A hover
+	//    transform added to .swipe-group six months from now would simply not
+	//    work, with nothing obvious to point at.
+	//  · It also releases the compositor layer the animation created, which
+	//    restores normal text rasterisation. (Measured against HEAD: leaving it
+	//    on shifted ~0.2% of pixels by at most 16/255 — invisible, but free.)
+	//
+	// Guarded on e.target because animationend BUBBLES: a descendant animation
+	// added later must not strip its ancestor's class mid-flight.
+	function clearOnFinish(el, className) {
+		el.addEventListener('animationend', function handler(e) {
+			if (e.target !== el) return;
+			el.classList.remove(className);
+			el.style.removeProperty('--i');
+			el.removeEventListener('animationend', handler);
+		});
+	}
+
 	// ---------- Icons ----------
 	//
 	// Inline SVG rather than text glyphs. The previous '⌄' was a modifier
@@ -111,9 +157,13 @@
 		);
 	}
 
-	function directionHTML(direction, cardCount) {
+	// isCascadeUnit: whether THIS element is the thing that should stagger in.
+	// True for the carousel, where each .direction is a top-level group. False
+	// for tabs, where the cascading unit is the .tab-content wrapper — marking
+	// both would nest one entrance animation inside another.
+	function directionHTML(direction, cardCount, isCascadeUnit) {
 		return (
-			'<div class="direction">' +
+			'<div class="direction' + (isCascadeUnit ? ' cascade-item' : '') + '">' +
 			'<p class="q-title">' + escapeHTML(direction.question) + '</p>' +
 			cardsRowHTML(cardCount) +
 			'</div>'
@@ -124,81 +174,143 @@
 
 	function renderCarousel(main, directions) {
 		main.innerHTML = directions
-			.map(function (d) { return directionHTML(d, CARD_COUNTS.carousel); })
+			.map(function (d) { return directionHTML(d, CARD_COUNTS.carousel, true); })
 			.join('');
 	}
 
 	// ---------- Tabs: strip of labels, one active direction shown below ----------
 
+	// The strip and the content are built ONCE and kept alive; only .active and
+	// the content's innerHTML change. The old version rebuilt both on every tap,
+	// which cost three things:
+	//
+	//   1. It destroyed the tapped button mid-:active, cutting off the press
+	//      feedback the moment the user pressed — the one bit of motion the file
+	//      already had.
+	//   2. It reset .tab-strip's scrollLeft to 0. The strip is overflow-x:auto
+	//      and at 390px the last tab sits off-screen, so tapping it scrolled the
+	//      row and the rebuild immediately snapped it back to the start.
+	//   3. It made the content swap unanimatable — there was no persistent node
+	//      to animate, and the strip flickered along with the content.
+	//
+	// Keeping the strip also means the active pill's fill transitions for free
+	// via the shared pill-row rule's existing background-color transition.
 	function renderTabs(main, directions) {
 		var active = 0;
 
 		var wrap = document.createElement('div');
 		main.appendChild(wrap);
 
-		function paintTabs() {
-			var strip = '<div class="tab-strip">';
-			directions.forEach(function (d, i) {
-				strip +=
-					'<button class="tab' + (i === active ? ' active' : '') + '" data-i="' + i + '">' +
+		var strip = document.createElement('div');
+		strip.className = 'tab-strip cascade-item';
+		strip.innerHTML = directions
+			.map(function (d, i) {
+				return (
+					'<button class="tab' + (i === active ? ' active' : '') +
+					'" data-i="' + i + '">' +
 					escapeHTML(shortLabel(d.question)) +
-					'</button>';
-			});
-			strip += '</div>';
-			return strip;
-		}
+					'</button>'
+				);
+			})
+			.join('');
+		wrap.appendChild(strip);
 
-		function paint() {
-			wrap.innerHTML = paintTabs() + '<div class="tab-content">' +
-				directionHTML(directions[active], CARD_COUNTS.tabs) + '</div>';
-		}
+		var content = document.createElement('div');
+		content.className = 'tab-content cascade-item';
+		wrap.appendChild(content);
 
-		wrap.addEventListener('click', function (e) {
-			var btn = e.target.closest('.tab');
-			if (!btn) return;
-			active = Number(btn.dataset.i);
-			paint();
+		// .tab-content is the one node that re-animates in place, so its cleanup
+		// is registered once here rather than per paint — otherwise every tab tap
+		// would stack another listener.
+		content.addEventListener('animationend', function (e) {
+			if (e.target === content) content.classList.remove('swap-in');
 		});
 
-		paint();
+		function paintContent(animate) {
+			content.innerHTML = directionHTML(directions[active], CARD_COUNTS.tabs, false);
+			if (!animate) return;
+			// Restarting a keyframe on a node that PERSISTS needs the class
+			// removed, a reflow forced to register the removal, then re-added —
+			// otherwise both mutations coalesce into one frame and nothing
+			// replays. Same remove→reflow→re-add pattern the sibling
+			// understand-and-latest-news prototype uses for its flash ring.
+			//
+			// rise-in comes off too: tapping a tab DURING the mount cascade would
+			// otherwise leave two entrance animations fighting over opacity and
+			// transform on the same element.
+			content.classList.remove('swap-in', 'rise-in');
+			void content.offsetWidth;
+			content.classList.add('swap-in');
+		}
+
+		strip.addEventListener('click', function (e) {
+			var btn = e.target.closest('.tab');
+			if (!btn) return;
+			var i = Number(btn.dataset.i);
+			// Re-tapping the open tab shouldn't replay the animation.
+			if (i === active) return;
+			active = i;
+			Array.prototype.forEach.call(strip.querySelectorAll('.tab'), function (b, bi) {
+				b.classList.toggle('active', bi === active);
+			});
+			paintContent(true);
+		});
+
+		// First paint rides the mount cascade on .tab-content, so it must not
+		// also run the swap animation.
+		paintContent(false);
 	}
 
 	// ---------- Accordion: one open at a time ----------
 
+	// Every body is ALWAYS in the DOM now, opened and closed purely by class, so
+	// CSS can animate the height (see .acc-body-outer in styles.css). The old
+	// version rebuilt all five items on every toggle and omitted closed bodies
+	// entirely — which left a collapse with no node to animate, and threw away
+	// and recreated all five items' placeholder DOM on every single tap.
+	//
+	// The .acc-body-outer wrapper exists only to carry the animating grid row;
+	// .acc-body is the element that gets clipped.
 	function renderAccordion(main, directions) {
 		var openIndex = 0;
 
 		var wrap = document.createElement('div');
 		main.appendChild(wrap);
 
-		function paint() {
-			wrap.innerHTML = directions
-				.map(function (d, i) {
-					var isOpen = i === openIndex;
-					return (
-						'<div class="acc-item' + (isOpen ? ' open' : '') + '">' +
-						'<button class="acc-header" data-i="' + i + '">' +
-						'<span>' + escapeHTML(d.question) + '</span>' +
-						'<span class="chevron">' + icon('chevron-down') + '</span>' +
-						'</button>' +
-						(isOpen
-							? '<div class="acc-body">' + cardsRowHTML(CARD_COUNTS.accordion) + '</div>'
-							: '') +
-						'</div>'
-					);
-				})
-				.join('');
-		}
+		wrap.innerHTML = directions
+			.map(function (d, i) {
+				var isOpen = i === openIndex;
+				return (
+					'<div class="acc-item cascade-item' + (isOpen ? ' open' : '') + '">' +
+					'<button class="acc-header" data-i="' + i + '"' +
+					' aria-expanded="' + isOpen + '">' +
+					'<span>' + escapeHTML(d.question) + '</span>' +
+					'<span class="chevron">' + icon('chevron-down') + '</span>' +
+					'</button>' +
+					'<div class="acc-body-outer">' +
+					'<div class="acc-body">' + cardsRowHTML(CARD_COUNTS.accordion) + '</div>' +
+					'</div>' +
+					'</div>'
+				);
+			})
+			.join('');
+
+		var items = wrap.querySelectorAll('.acc-item');
 
 		wrap.addEventListener('click', function (e) {
 			var btn = e.target.closest('.acc-header');
 			if (!btn) return;
-			var i = Number(btn.dataset.i);
-			openIndex = openIndex === i ? -1 : i;
-			paint();
+			var tapped = Number(btn.dataset.i);
+			openIndex = openIndex === tapped ? -1 : tapped;
+			// Toggling every item in one pass means the closing panel and the
+			// opening one animate simultaneously, which is what reads as a single
+			// movement rather than a collapse followed by an expand.
+			Array.prototype.forEach.call(items, function (item, i) {
+				var isOpen = i === openIndex;
+				item.classList.toggle('open', isOpen);
+				item.querySelector('.acc-header').setAttribute('aria-expanded', String(isOpen));
+			});
 		});
-
-		paint();
 	}
 
 	// ---------- Card Swipe: drag-to-cycle deck per direction ----------
@@ -285,7 +397,7 @@
 	function renderSwipe(main, directions) {
 		directions.forEach(function (d, i) {
 			var group = document.createElement('div');
-			group.className = 'swipe-group';
+			group.className = 'swipe-group cascade-item';
 			group.innerHTML = '<p class="q-title">' + escapeHTML(d.question) + '</p>';
 
 			var deck = createDeck(CARD_COUNTS.swipe, i === 0);
@@ -307,7 +419,7 @@
 						phCardInnerHTML(i) + '</div>';
 				}
 				return (
-					'<div class="portal-group">' +
+					'<div class="portal-group cascade-item">' +
 					'<p class="q-title">' + escapeHTML(d.question) + '</p>' +
 					'<div class="portal-window"><div class="portal-strip">' + cards + '</div></div>' +
 					'</div>'
@@ -340,6 +452,12 @@
 				);
 			}).join('') +
 			'</div>';
+
+		// One continuous sequence: eyebrow, title, then the five items. Two calls
+		// rather than one querySelectorAll because document order across two
+		// different selectors isn't something to rely on for timing.
+		var next = cascade(shell.querySelectorAll('.menu-eyebrow, .menu-title'), 0);
+		cascade(shell.querySelectorAll('.menu-item'), next);
 	}
 
 	function renderPatternView(shell, app, id) {
@@ -374,6 +492,21 @@
 		var main = shell.querySelector('.pattern-main');
 		var directions = CONTENT.patterns[id].directions;
 		RENDERERS[id](main, directions);
+
+		// Tier 1: the header. Tier 2: whatever the renderer marked as a top-level
+		// group. Every renderer opts in by putting `cascade-item` in a class
+		// string it was already building, so the shell doesn't need to know any
+		// pattern's DOM shape — and adding a sixth pattern later gets the
+		// entrance for free.
+		//
+		// The switcher is deliberately NOT cascaded. It's harness chrome (per the
+		// M2 decision), so animating it on every route change draws the eye to
+		// the frame rather than the experiment. It's also load-bearing on two
+		// transforms that a cascade would fight: `translateX(-50%)` for centering
+		// at phone width, and the offsetLeft/clientWidth measurements the
+		// scroll-into-view block below depends on.
+		var next = cascade([shell.querySelector('.pattern-header')], 0);
+		cascade(main.querySelectorAll('.cascade-item'), next);
 
 		// Keep the active pill in view when arriving by deep link — with 5
 		// pills the last two are off-screen at phone width.
