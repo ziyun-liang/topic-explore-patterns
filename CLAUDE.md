@@ -597,6 +597,95 @@ promote into a milestone once there's enough shape to act on.
     for nothing. Reopen only if the inset mismatch turns out to read badly on a
     device.
 
+- **2026-08-16 (eighth pass) — velocity lag on the card rows.** Lindsey: swiping the
+  content-card rows felt like "the same group, move all together," wanted physics —
+  spring/elastic. Studied `reference/Animation/HorizontalSwipe.mp4` by extracting
+  frames and tracking geometry rather than eyeballing it (per `/video-to-anim`).
+  - **The reference has no bounce.** Segmenting the blue card by hue: its height was
+    exactly 614px in *every* frame — horizontal-only, no scale/rotate/vertical
+    offset. The gap between adjacent cards stretched 521px (rest) → 551px (peak,
+    +5.8%) and, confirmed at native 60fps, closed back to 521 **monotonically** —
+    551→542→536→533→530→526→523→521, stop. Never dipped below and returned. So
+    "spring/elastic" was the wrong description of what's actually in the video;
+    built a **velocity low-pass filter** instead — it can't overshoot, and its
+    steady-state output is proportional to input velocity, which is exactly what
+    was measured. A spring would need deliberate critical damping to suppress a
+    bounce that isn't there.
+  - **`LAG_PER_CARD = 0.017` is derived, not tuned.** Video card pitch 521px in an
+    800px render → scale factor 0.614 against our 320px pitch (308 card + 12
+    gutter). Peak velocity 1762 px/s → 1082 px/s ours; peak lag 30px → 18.4px ours.
+    Since the effect is velocity-proportional, the constant has to be a **time**:
+    18.4 / 1082 = 0.017s — each card trails the one ahead of it by ~17ms of travel.
+  - **Native scroll stays native**, per Lindsey's call. Momentum, scroll-snap,
+    keyboard, trackpad, scrollbar semantics — none of it was touched. The
+    reference's own pacing (accelerates *then* decelerates over ~900ms) can't be
+    reproduced by a finger-flick anyway, since a release only decelerates; that
+    clip is a programmatic/auto-advance transition. Judged good enough on the
+    phone rather than rebuilding momentum from scratch to chase it.
+  - **A real M4 data point:** CSS scroll-driven animations (`animation-timeline`)
+    could not have done any of this — that API is *position*-driven and this
+    effect is *velocity*-driven. Ruled out on evidence, not taste. GSAP earned
+    nothing here either: the effect is a ~30-line rAF loop, and its actual value
+    (`Draggable`/`Inertia`) would only matter if the gesture itself were taken
+    over, which it wasn't. (GSAP is now 100% free including Inertia — not a factor
+    either way, but worth recording since M4 hasn't happened yet.)
+  - **Implementation:** one document-level `scroll` listener in the **capture**
+    phase — `scroll` doesn't bubble but does fire during capture, so one listener
+    covers every `.cards-row` including ones a later render creates (e.g.
+    `renderTabs` rebuilding `.tab-content`), with nothing to attach or clean up
+    per row. A single rAF loop runs only while some row is moving and stops
+    itself once every tracked row settles, clearing transforms so nothing is left
+    pinned. Scoped to `.cards-row > .card`, which excludes the swipe deck (its
+    own transforms) and Portal's strip entirely.
+  - **The index flips with scroll direction**, and that's deliberate: with a fixed
+    index, one direction spreads the cards (correct) and the other compresses
+    them (an 18px lag against a 12px gutter would overlap). Indexing from
+    whichever card leads makes it spread both ways. The flip is a discontinuity
+    in the index, but it's multiplied by velocity, and reversing direction means
+    passing through velocity ≈ 0 first — so the jump lands exactly where the
+    multiplier is nil.
+  - **A real bug found and fixed during verification, via a proper raw-vs-filtered
+    comparison rather than guessing:** the naive `instVel = dx/dt` with a *fixed*
+    per-frame smoothing coefficient implicitly assumes ~60fps. On a frame with an
+    unusually small `dt`, the same `dx` reads as a much larger velocity with
+    nothing to compensate — surfaced as a ~2-11px wiggle in the lag output with no
+    matching event in the raw `scrollLeft` trace. Fixed with the standard
+    correction: floor `dt` at 1/240s, and derive the smoothing coefficient FROM
+    `dt` each frame (`alpha = 1 - e^(-dt/τ)`, `τ = 0.1026s`) instead of using a
+    constant — chosen so `alpha` equals the original `0.15` exactly at 60fps,
+    preserving the tuned responsiveness while fixing the frame-rate sensitivity.
+    Cut the unexplained wiggle from 8–11px to under 2px.
+  - **A second, separate wiggle is real and left in, on purpose.** Driving the row
+    with a synthetic multi-step wheel gesture and watching raw `scrollLeft`
+    directly showed **Chromium's own momentum+snap settle can overshoot its snap
+    point and correct** (measured: 491→300→320, reversing direction on its own).
+    The filter faithfully reflects that, because that's the design — suppressing
+    it would mean the filter stops tracking real velocity. Verified this doesn't
+    generalise into self-inflicted ringing: same test shows the filter produces at
+    most 1-2 extra direction changes beyond what the raw scroll itself has, and
+    the largest is ~2px against an 18–40px primary effect.
+  - **Verified:** all 12 settled frames pixel-identical (`maxDelta = 0` — lag is
+    zero at rest, so this is the strongest available proof nothing leaked); gap
+    stretch/return reproduced under a real wheel gesture (not direct `scrollLeft`
+    assignment — see the note below); no self-generated ringing; transforms clear
+    to `none` on settle and the rAF loop actually stops; deck and Portal never
+    receive a transform from this code; reduced motion applies zero transforms; a
+    row created after a tab switch still lags (proving the capture-phase listener
+    covers it); 8/8 behaviour suite, 7/7 indicator suite, audit unchanged, 0
+    console errors.
+  - **Testing note worth keeping:** driving `.cards-row` via direct `scrollLeft`
+    assignment is **invalid** for verification here — `scroll-snap-type: x
+    mandatory` clamps every direct assignment to the nearest snap point
+    *instantly* (confirmed: setting 50 snaps to 0, setting 300 snaps to 320, on
+    both Carousel and Tabs identically). A frame-by-frame ramp produces one
+    discrete jump, not a continuous scroll. Use `page.mouse.wheel()` — a real
+    gesture isn't re-snapped mid-flight, only once it settles.
+  - **Not yet on a real phone, and it matters more than usual here.** 17ms of lag
+    is subtle by design, and main-thread transforms during iOS momentum scrolling
+    are the one thing that could jank. If it does, that's the finding — and the
+    argument for taking over the gesture after all (which is where `Draggable`/
+    `Inertia` would finally earn their place).
+
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's
   note about what M1 deliberately left unsolved). **Before treating M1 as

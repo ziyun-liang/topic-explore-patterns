@@ -736,5 +736,142 @@
 		if (switcherEl && switcherEl.parentNode) positionThumb(switcherEl, false);
 	});
 
+	// ---------- Card-row velocity lag ----------
+	//
+	// Reference: reference/Animation/HorizontalSwipe.mp4. Watched frame-by-frame
+	// (30 frames at 24fps around one swipe, then the settle at native 60fps) rather
+	// than eyeballed. Two measurements drove every constant below and every
+	// modelling choice:
+	//
+	//   · Card height was 614px in EVERY frame — no scale, no vertical offset, no
+	//     rotation. This is a horizontal-only effect.
+	//   · The gap between adjacent cards stretches from 521px at rest to 551px at
+	//     peak speed (+5.8%) and CLOSES BACK to 521 — monotonically, confirmed at
+	//     60fps (551→542→536→533→530→526→523→521, stop). It never dips below
+	//     521 and returns. That rules out a spring: a spring would need deliberate
+	//     critical damping to avoid overshooting, and the measurement says there
+	//     ISN'T any to avoid.
+	//
+	// So this is a velocity LOW-PASS FILTER, not a spring integrator. A low-pass
+	// filter can't overshoot, and its steady-state output is proportional to input
+	// velocity — both are exactly what was measured. Converting the reference's
+	// peak lag (30px in an 800px render, card pitch 521px) into our card pitch
+	// (308 + 12 gutter = 320px, scale factor 0.614) and expressing it as a TIME
+	// rather than a distance (since the effect is velocity-proportional, a time
+	// constant is the only version that stays correct at any scroll speed):
+	//
+	//   peak velocity  1762 px/s (video) -> 1082 px/s (ours)
+	//   peak lag         30px    (video) ->   18.4px  (ours)
+	//   LAG_PER_CARD = 18.4 / 1082 = 0.017s — each card trails the one ahead of it
+	//   by ~17ms of travel.
+	//
+	// Deliberately left native: momentum, scroll-snap, keyboard, trackpad, and
+	// scrollbar semantics are all still the browser's. The reference itself paces
+	// over ~900ms with an ease-in-out, which a released finger-flick can't
+	// reproduce (a fling only decelerates; the reference accelerates first) — taking
+	// that over would mean rebuilding momentum/keyboard/accessibility from scratch,
+	// which is out of scope here. Native scroll-driven CSS (animation-timeline)
+	// could not have done ANY of this regardless: that API is position-driven, and
+	// this effect is velocity-driven.
+	var LAG_PER_CARD = 0.017; // seconds — derived above, not tuned by feel
+	// Time constant, not a fixed per-frame coefficient — see lagStep for why.
+	// 0.1026s is not a round number: it's chosen so alpha = 1 - e^(-dt/τ) equals
+	// exactly 0.15 at a 60fps dt (16.67ms), preserving the originally-tuned
+	// responsiveness while fixing dt-jitter sensitivity, rather than silently also
+	// changing how snappy the filter feels.
+	var VEL_TAU = 0.1026;
+	var MIN_DT = 1 / 240;     // floor on dt, in seconds — see comment below
+	var LAG_CAP = 40;         // px — ceiling so a hard flick can't fling a card
+
+	var lagRows = []; // rows currently tracked; only ones that have actually scrolled
+	var lagRAF = null;
+
+	function lagStep(now, row) {
+		if (row._lagLastT == null) { row._lagLastT = now; return; }
+		var dt = (now - row._lagLastT) / 1000;
+		row._lagLastT = now;
+		if (dt <= 0) return;
+
+		var dx = row.scrollLeft - row._lagPrevScroll;
+		row._lagPrevScroll = row.scrollLeft;
+		// instVel = dx/dt blows up whenever two scroll events land unusually close
+		// together — the same dx over a tinier dt reads as a much bigger velocity,
+		// with nothing in a FIXED per-frame smoothing coefficient to compensate
+		// (a constant coefficient implicitly assumes ~60fps/16ms frames). Found via
+		// a synthetic-scroll test that exposed a ~4px wiggle in the lag output with
+		// no matching event in the real scrollLeft trace — traced to exactly this.
+		// Two corrections, both standard for a dt-driven low-pass:
+		//   1. Floor dt at 1/240s so a freak sub-frame gap can't be divided by
+		//      near-zero.
+		//   2. Derive the smoothing coefficient FROM dt each frame
+		//      (alpha = 1 - e^(-dt/τ)) instead of using a fixed constant, so the
+		//      filter's effective bandwidth is the same whether frames land 8ms or
+		//      33ms apart.
+		if (dt < MIN_DT) dt = MIN_DT;
+		var instVel = dx / dt;
+		var alpha = 1 - Math.exp(-dt / VEL_TAU);
+		row._lagVel += (instVel - row._lagVel) * alpha;
+
+		var cards = row._lagCards;
+		var settled = Math.abs(row._lagVel) < 1 && Math.abs(dx) < 0.5;
+		for (var i = 0; i < cards.length; i++) {
+			// Index from the LEADING edge in the direction of travel, not a fixed
+			// end — otherwise travel one way spreads the cards (correct) and the
+			// other way compresses them (18px of lag against a 12px gutter would
+			// overlap). This flip is a discontinuity in `i`, but it's multiplied by
+			// vel, and reversing direction means passing through vel≈0 first, so
+			// the jump lands where the multiplier is nil.
+			var idx = row._lagVel >= 0 ? i : (cards.length - 1 - i);
+			var offset = settled ? 0 : Math.max(-LAG_CAP, Math.min(LAG_CAP, row._lagVel * LAG_PER_CARD * idx));
+			cards[i].style.transform = offset ? 'translateX(' + offset + 'px)' : '';
+		}
+		row._lagSettled = settled;
+	}
+
+	function lagTick() {
+		var now = performance.now();
+		var stillMoving = false;
+		for (var i = 0; i < lagRows.length; i++) {
+			lagStep(now, lagRows[i]);
+			if (!lagRows[i]._lagSettled) stillMoving = true;
+		}
+		if (stillMoving) {
+			lagRAF = requestAnimationFrame(lagTick);
+		} else {
+			// Every row is at rest with its transforms already cleared by lagStep
+			// (settled forces offset to 0) — stop the loop rather than run it
+			// forever at zero cost, so this can never become a battery drain.
+			lagRAF = null;
+			lagRows = [];
+		}
+	}
+
+	function onCardsRowScroll(row) {
+		if (row._lagCards == null) {
+			row._lagCards = row.querySelectorAll(':scope > .card');
+			row._lagPrevScroll = row.scrollLeft;
+			row._lagVel = 0;
+			row._lagLastT = null;
+		}
+		if (lagRows.indexOf(row) === -1) lagRows.push(row);
+		if (lagRAF == null) lagRAF = requestAnimationFrame(lagTick);
+	}
+
+	// One document-level listener in the CAPTURE phase, not one per row. `scroll`
+	// does not bubble, but it IS dispatched during capture — so a single listener
+	// here reaches every .cards-row that exists now AND every one a later render
+	// creates (e.g. renderTabs rebuilding .tab-content), with nothing to attach or
+	// clean up per row.
+	if (!prefersReducedMotion()) {
+		document.addEventListener('scroll', function (e) {
+			var row = e.target;
+			if (row.classList && row.classList.contains('cards-row')) onCardsRowScroll(row);
+		}, true);
+	}
+
+	function prefersReducedMotion() {
+		return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+	}
+
 	render();
 })();
