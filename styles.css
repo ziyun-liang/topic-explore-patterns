@@ -103,7 +103,7 @@ svg { display: block; }
 .acc-header,
 .tab,
 .switcher-btn,
-.back-btn {
+.back-link {
 	transition: transform var(--dur-press) var(--ease-out),
 	            background-color var(--dur-press) var(--ease-out),
 	            color var(--dur-press) var(--ease-out);
@@ -113,14 +113,17 @@ svg { display: block; }
 .acc-header:active,
 .tab:active,
 .switcher-btn:active,
-.back-btn:active { transform: scale(0.97); }
+.back-link:active { transform: scale(0.97); }
 
 @media (hover: hover) and (pointer: fine) {
 	.menu-item:hover,
 	.acc-header:hover,
 	.tab:not(.active):hover,
-	.switcher-btn:not(.active):hover,
-	.back-btn:hover { background-color: #e9e9e9; }
+	.switcher-btn:not(.active):hover { background-color: #e9e9e9; }
+
+	/* .back-link has no fill of its own — the circle inside it is what responds,
+	   so the hover has to reach through rather than sit on the hovered element. */
+	.back-link:hover .back-btn { background-color: #e9e9e9; }
 }
 
 /* ---------- Appear cascade ----------
@@ -269,31 +272,48 @@ svg { display: block; }
 	pointer-events: none;
 }
 
+/* The whole row is the link, circle AND label, not just the circle: 36px alone
+   sits right on the WCAG 2.5.8 floor, and a chevron paired with its destination
+   is the standard back affordance.
+
+   This does bend "grey fill means tappable" — the label carries no fill. It's a
+   deliberate exception, not drift: that rule exists to stop *content* from
+   reading as tappable, and a back label isn't content. Don't generalise from it. */
+.back-link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s-3);
+	margin-bottom: var(--s-5);
+	cursor: pointer;
+	/* Left, not centre: the circle is a fixed landmark at the row's start, so
+	   centre-origin scaling would visibly slide it right on press. From the left
+	   the circle holds still and only the label compresses. */
+	transform-origin: left center;
+}
+
 .back-btn {
+	flex: 0 0 auto;
 	display: grid;
 	place-items: center;
 	width: 36px;
 	height: 36px;
-	border: none;
 	border-radius: var(--r-pill);
 	background: var(--g-1);
 	color: var(--ink);
-	padding: 0;
-	margin-bottom: var(--s-5);
-	cursor: pointer;
+	transition: background-color var(--dur-press) var(--ease-out);
 }
 
-.pattern-header .topic-label {
-	display: block;
-	font-size: var(--t-meta);
+/* Same size and weight as .menu-item-name — these are the same role (a
+   navigable destination), and this one is greyed because you've already been
+   there. */
+.back-label {
+	font-size: var(--t-title);
 	font-weight: 500;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
+	letter-spacing: -0.01em;
 	color: var(--ink-3);
-	margin-bottom: var(--s-2);
 }
 
-.pattern-header .pattern-name {
+.pattern-header .screen-title {
 	display: block;
 	font-size: var(--t-display);
 	font-weight: 600;
@@ -749,7 +769,7 @@ svg { display: block; }
 	.acc-header:active,
 	.tab:active,
 	.switcher-btn:active,
-	.back-btn:active { transform: none; }
+	.back-link:active { transform: none; }
 
 	.deck-card { transition: opacity .2s ease; }
 

@@ -307,6 +307,39 @@ promote into a milestone once there's enough shape to act on.
     matters more now. Cascade rhythm, accordion height feel, and whether rapid
     switcher tapping stutters are exactly what a screenshot cannot show.
 
+- **2026-08-16 (third pass) — pattern header simplified.** Lindsey's sketch. The
+  header now reads: a back row (chevron circle + the label **"Ways in"**), then
+  the theme name as the title. Three deliberate calls behind it:
+  - **All five screens show the same title** (`AI education impact`, from
+    `CONTENT.topic`) and the pattern's own name is gone from inside the frame.
+    Which pattern you're in is the **switcher's** job — naming it in the header
+    made every screen read as a labelled specimen rather than a product screen.
+    Same argument as M2's switcher call. **Don't put the pattern name back**
+    without reopening that decision.
+  - **The uppercase topic eyebrow is gone.** Once the theme *is* the title, an
+    eyebrow above it was saying the same thing twice. Note this drops those
+    routes from 4 type sizes to 3 (30/19/15 — only `#/swipe` still uses 12px, via
+    `.deck-hint`, and `#/` via `.menu-eyebrow`). That's fine: the audit target is
+    3–4 sizes and minStep went 1.25× → **1.27×**, i.e. slightly tighter. The
+    scale still *defines* four; individual screens just don't all use four.
+  - **The back label is verbatim the menu's own H1.** A back label that doesn't
+    match the page you land on is worse than no label, so these two strings are
+    coupled: **rename one and you must rename the other.** ("All entry points"
+    was considered and would have meant renaming the menu H1 too.)
+  - The whole row is the link, not just the circle — tap target went 36×36 →
+    **113×36**. This bends "grey fill means tappable" since the label has no
+    fill; it's an intentional exception (that rule exists to stop *content* from
+    reading as tappable, and a back label isn't content), commented as such in
+    `styles.css`. Press feedback scales from `left center` so the circle holds
+    still and only the label compresses.
+  - No `aria-label` on the back link, on purpose: the visible "Ways in" is the
+    accessible name, and an aria-label would override it — leaving a
+    voice-control user saying "tap Ways in" with nothing to match.
+  - `.pattern-name` was renamed `.screen-title`, since it no longer holds a
+    pattern name and the old name would actively mislead.
+  - Verified: 7/7 behaviour tests still pass, audit within targets, 0 console
+    errors, back link lands on `#/` whose H1 is exactly "Ways in".
+
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's
   note about what M1 deliberately left unsolved). **Before treating M1 as

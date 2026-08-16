@@ -13,7 +13,11 @@
 // checking patterns.js's per-pattern card-count assumptions too.
 
 window.CONTENT = {
-	topic: 'AI education',
+	// The mocked theme name. Renders in two places: the menu's eyebrow, and the
+	// title of every pattern screen — all five say the same thing, on purpose
+	// (the pattern you're in is identified by the switcher, not the header).
+	// Sentence case, matching 'Ways in'; the eyebrow uppercases it in CSS.
+	topic: 'AI education impact',
 
 	patterns: {
 		carousel: {

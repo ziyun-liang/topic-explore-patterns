@@ -460,16 +460,26 @@
 		cascade(shell.querySelectorAll('.menu-item'), next);
 	}
 
+	// The header carries the THEME name, identically on all five screens — not the
+	// pattern's own name, which used to sit here. Which pattern you're looking at
+	// is the switcher's job; naming it inside the frame made every screen read as
+	// a labelled specimen instead of a product screen. The old uppercase topic
+	// eyebrow is gone for the same reason: the theme is now the title, so
+	// repeating it above the title was saying one thing twice.
+	//
+	// The back chevron carries a visible label naming its destination, which is
+	// verbatim the menu's own H1 ("Ways in") — a back label that doesn't match the
+	// page you land on is worse than no label. Deliberately NO aria-label: the
+	// visible text is the accessible name, and an aria-label would override it,
+	// leaving voice-control users saying "tap Ways in" with nothing to match.
 	function renderPatternView(shell, app, id) {
-		var pattern = PATTERNS.filter(function (p) { return p.id === id; })[0];
-
 		shell.innerHTML =
 			'<header class="pattern-header">' +
-			'<a class="back-btn" href="#/" aria-label="All patterns">' +
-			icon('chevron-left') +
+			'<a class="back-link" href="#/">' +
+			'<span class="back-btn">' + icon('chevron-left') + '</span>' +
+			'<span class="back-label">Ways in</span>' +
 			'</a>' +
-			'<span class="topic-label">' + escapeHTML(CONTENT.topic) + '</span>' +
-			'<span class="pattern-name">' + pattern.label + '</span>' +
+			'<span class="screen-title">' + escapeHTML(CONTENT.topic) + '</span>' +
 			'</header>' +
 			'<main class="pattern-main"></main>';
 
