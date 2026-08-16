@@ -12,12 +12,15 @@ that.
 - **Visual system done (M3).** The governing rule is **grey fill means
   tappable** — content sits on white and is separated by space alone. That's
   what let every hairline border go. Four greys, four type sizes (30/19/15/12),
-  one radius family (12/20/999), system sans only, no webfont. Device frame on
-  desktop ≥900px. Don't reintroduce `1px solid` anywhere; if something reads as
-  mush the fix is more space.
-- Live at `https://ziyun-liang.github.io/topic-explore-patterns/` — verified
-  on localhost and on the live URL (Playwright at 390×844, zero console
-  errors).
+  one radius family (12/20/999), system sans only, no webfont. Shadow-only
+  device frame on desktop ≥900px (no bezel). Don't reintroduce `1px solid`
+  anywhere; if something reads as mush the fix is more space.
+- Live at `https://ziyun-liang.github.io/topic-explore-patterns/`, current as of
+  commit `0d01365`. Verified against the **deployed** URL, not just localhost
+  (Playwright at 390×844 and 1440×900, zero console errors).
+- **Outstanding: never checked on a real phone.** Press feedback and switcher
+  scroll momentum can't be verified from a screenshot. Do this before treating
+  any feel-dependent work as done.
 - Zero build step, zero dependencies. Plain `index.html` / `styles.css` /
   `content.js` / `patterns.js`. Hash routing (`#/carousel` etc.), pinned
   bottom switcher.
@@ -31,6 +34,15 @@ that.
 
 ## Working conventions
 
+- **Visual/craft work: invoke `/lowfi-craft` first.** It was extracted *from*
+  this repo's M3 refresh (2026-08-16), so it encodes this project's own visual
+  system — the audit, the grey-fill rule, the placeholder recipe, and the traps
+  that cost time here. `~/.claude/skills/lowfi-craft/`. Run its `audit.js` in the
+  console before and after any visual change: target is **smallest gap between
+  adjacent font sizes ≥ 1.2×**, 0 borders, 0 serif nodes, ≤3 radii + pill.
+  Counts, not impressions. Note it explicitly overrides `frontend-design` /
+  `ui-ux-pro-max` here — their advice to pick a characterful display face and a
+  signature element is correct for finished UI and wrong at this fidelity.
 - **Animation/craft work:** invoke `/emil-design-eng` for taste and judgment
   on the polish itself. When writing actual motion code, invoke the relevant
   `/gsap-*` skill(s) — `gsap-core` / `gsap-timeline` for basics and
@@ -68,12 +80,22 @@ that.
 Ordered. Each has a short scope and, where one exists, an explicit open
 question to resolve at kickoff — these are deliberately *not* resolved here.
 
-- [ ] **M1 — Motion baseline.** Every existing interaction gets an eased,
-  intentional transition instead of today's instant/default behavior:
-  accordion expand/collapse has *no* height animation currently, tab-content
-  switches are an instant swap, switcher navigation between patterns is a
-  hard re-render. No new patterns, no visual redesign — get the existing
-  shell feeling considered before building anything new on top of it.
+- [ ] **M1 — Motion baseline.** *Scope shrank in M3 — don't redo the done parts.*
+  **Already shipped:** press feedback (`scale(0.97)` @ 160ms on every tappable),
+  the `--ease-out: cubic-bezier(0.23, 1, 0.32, 1)` token, the chevron rotate,
+  `prefers-reduced-motion` handling, and `(hover: hover) and (pointer: fine)`
+  gating on hover states.
+
+  **Still to do — three transitions, all currently instant:**
+  1. Accordion expand/collapse has *no* height animation.
+  2. Tab-content switching is an instant swap ([patterns.js](patterns.js)
+     `renderTabs` re-renders `wrap.innerHTML` wholesale).
+  3. Switcher navigation between patterns is a hard re-render (`render()` blows
+     away `#app` on every `hashchange`).
+
+  No new patterns, no visual redesign. Note (1) and (2) both fight the current
+  render-by-innerHTML approach — animating them may mean keeping nodes alive
+  rather than rebuilding, which is the real design question at kickoff.
 
 - [~] **M2 — Shell usability pass.** *Switcher half is done* (folded into M3,
   2026-08-16). The open question — does 5-way switching belong in a persistent
@@ -141,8 +163,13 @@ promote into a milestone once there's enough shape to act on.
 - **2026-08-16** — **M3 done + M2's switcher question resolved.** Diagnosed the
   reference images in `reference/Low-fi-style/`: they make *fewer* decisions and
   execute each generously, where the old CSS made more at smaller amplitude (8
-  type sizes in a 14px range, 5 greys with 3 indistinguishable, 6 radii, three
-  separator mechanisms at once, two typefaces). Shipped:
+  type sizes, 5 greys with 3 indistinguishable, 6 radii, three separator
+  mechanisms at once, two typefaces). **Precise metric, established later while
+  extracting the skill:** total span barely discriminates — the old 8-size scale
+  spanned 2.3× and the new 4-size one spans 2.5×. What separates them is the
+  *smallest gap between adjacent sizes*: **1.05× before** (`10.5` and `11` were
+  doing the same job) **vs 1.25× after**. Any two neighbours within ~1.15× means
+  one is dead weight. Shipped:
   - Georgia removed everywhere. It was a bad Cheltenham stand-in (warmer,
     rounder — read "2010 blog") and its `font-weight: 500` never even applied.
     `styles.css`'s header now marks the explicit type-deferral point.
@@ -152,8 +179,8 @@ promote into a milestone once there's enough shape to act on.
     ~80% of the pixels, so a flat rectangle made everything else read as crude.
   - Menu/accordion/tab/switcher became filled grey blocks with white
     arrow-in-circle affordances (Ref 4). Text glyphs `⌄ → ‹` → inline SVG.
-  - Device frame on desktop (bezel = a spread shadow, no extra DOM), home
-    indicator on a scrim.
+  - Device frame on desktop, no extra DOM, home indicator on a scrim. (Shipped
+    with a 10px black bezel ring; removed later the same day — see below.)
   - Press feedback (`scale(0.97)` @ 160ms) + `--ease-out` token defined for M1.
   - **Two latent bugs found and fixed while in there:** (1) Portal's
     `flex: 0 0 70%` was resolving against a content box shrunk by the strip's
@@ -173,3 +200,17 @@ promote into a milestone once there's enough shape to act on.
     undefined and reads as a smudge). `--bezel` token deleted. The 44px radius
     now carries the entire "this is a phone" read, so **don't reduce it.**
     Verified phone width is byte-identical across all 6 routes.
+  - **Deployed.** Commit `0d01365` pushed to `main`; GitHub Pages is classic
+    branch-based (`source: {branch: main, path: /}`) so main is the only branch
+    that moves the live URL — don't branch for changes meant to go live. Verified
+    by loading the deployed URL in a browser, not just trusting the build status.
+  - **Extracted `/lowfi-craft`** (`~/.claude/skills/lowfi-craft/`) from this
+    work — SKILL.md + `audit.js` + `starter.css`, whose token block diffs
+    byte-identical against `styles.css`. Writing it corrected the type-scale
+    metric recorded above. The skill's GREEN is unverified by design: we know it
+    names the right failures, not that it changes a fresh agent's behaviour.
+    Dogfood it on the next visual pass and the audit numbers will settle it.
+
+- **Next session** — starts a different refinement task; this doc is current as
+  of the wrap. M1's remaining scope is the three instant transitions listed
+  above, and the two deferred responsive bugs are recorded under M2.

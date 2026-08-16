@@ -47,9 +47,12 @@ python3 -m http.server 8080
 
 ## Fonts (deliberately not shipped here)
 
-This build uses the system font stack (`-apple-system`, Georgia for
-question text) — no NYT `.otf` files ship in this public repo. The existing
-Topic Intent exploration
+This build uses the system font stack (`-apple-system`) for **everything** — no
+NYT `.otf` files ship in this public repo, and no serif stands in for one. That's
+deliberate, not just a licensing constraint: at low fidelity a serif makes a
+brand claim the prototype hasn't earned, and a reviewer can't tell whether
+they're judging the interaction pattern or the typeface. `styles.css`'s header
+comment marks the deferral point. The existing Topic Intent exploration
 (`user-intents-design/topic-intent/explorations/understand-and-latest-news-on-one-page.html`)
 already has the real `@font-face` block solved (`NYTCheltenham` /
 `NYTFranklin` / `NYTImperial`); porting it in is the first step of the
