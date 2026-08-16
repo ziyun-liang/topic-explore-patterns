@@ -581,6 +581,22 @@ promote into a milestone once there's enough shape to act on.
     **dropping one excerpt line** (8 → 7), which lands at 70% with 61/62px air —
     essentially the Figma proportion — rather than rescaling every part.
 
+    **Then horizontal, same day.** `.card--excerpt` also got
+    `padding-inline: var(--s-7)` — 32px against the other two kinds' 20px. Chosen by
+    measurement, not feel: the Figma puts the rule at x=34 and the text block at
+    68→316 in a 355 card, i.e. **19.2%–89.0%** of the card width; 32px lands ours at
+    **16.9%–89.6%**, where `--s-6` (24px) would only reach 14.3%–92.2%. Horizontal
+    only — `justify-content: center` already gives 49px of vertical air, so the block
+    padding is not what governs it, and the fixed bar heights mean this couldn't
+    disturb the vertical fix (re-measured: content 313, air 49/49, text block 198,
+    all unchanged).
+
+    **Deliberately excerpt-only**, so the three cards in a row have different
+    internal insets (32 vs 20) while sharing an outer edge. Summary and Video hold a
+    glyph and 2–3 bars — they aren't dense, and padding them would shrink their bars
+    for nothing. Reopen only if the inset mismatch turns out to read badly on a
+    device.
+
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's
   note about what M1 deliberately left unsolved). **Before treating M1 as

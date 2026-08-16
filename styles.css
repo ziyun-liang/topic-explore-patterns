@@ -632,7 +632,16 @@ svg { display: block; }
    pixel and the block ran from just under the byline to the bottom padding with no
    air anywhere. Figma holds the content at ~68% of the card height and splits the
    slack top and bottom. */
-.card--excerpt { justify-content: center; }
+.card--excerpt {
+	justify-content: center;
+	/* Wider inset than the other two kinds (20px), because this is the only dense
+	   one — ten bars running the full content width is what made it read heavy
+	   beside a glyph and two lines. 32px puts the text block at 17%–90% of the card
+	   width, against the Figma's 19%–89% (201:5664: rule at x=34, text 68→316 in a
+	   355 card). Horizontal only: justify-content:center already yields 49px of
+	   vertical air, well clear of the 20px block padding. */
+	padding-inline: var(--s-7);
+}
 
 /* The rule stretches to the text block's height by default flex alignment — it
    marks the quote, so it should match the quote, not the card. */
