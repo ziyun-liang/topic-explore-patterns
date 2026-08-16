@@ -8,7 +8,8 @@ that.
 ## Current state
 
 - Shipped and deployed: 5 interaction patterns (Carousel, Tabs, Accordion,
-  Card Swipe, Portal), grey cards, real placeholder question copy.
+  Card Swipe, Portal) on the mocked theme **A.I. education impact**, with real
+  placeholder question copy.
 - **Motion baseline done (M1).** Nothing cuts any more: content cascades in on
   mount (two-tier — header, then question-groups), the accordion animates its
   height, and tab content re-enters instead of swapping. All five patterns share
@@ -17,23 +18,48 @@ that.
   visual system is provably untouched.
 - **Visual system done (M3).** The governing rule is **grey fill means
   tappable** — content sits on white and is separated by space alone. That's
-  what let every hairline border go. Four greys, four type sizes (30/19/15/12),
-  one radius family (12/20/999), system sans only, no webfont. Shadow-only
-  device frame on desktop ≥900px (no bezel). Don't reintroduce `1px solid`
-  anywhere; if something reads as mush the fix is more space.
+  what let every hairline border go. Four greys, a four-size type scale
+  (30/19/15/12) of which any one screen uses three, one radius family
+  (12/20/999), system sans only, no webfont. Shadow-only device frame on desktop
+  ≥900px (no bezel). Don't reintroduce `1px solid` anywhere; if something reads
+  as mush the fix is more space.
+- **Pattern screens share one header.** Back arrow + the label **"Ways in"**,
+  then the theme name as the title — identical on all five, because the pattern
+  you're in is identified by the switcher, not the header. No eyebrow tag. The
+  label matches the menu's own H1 *verbatim* on purpose; if you rename one,
+  rename both (see the session log for why).
+- **The switcher is a segmented toggle, not pills.** Grey track, white thumb that
+  *slides* between segments (240ms, `--ease-out`) — deliberately unlike the Tabs
+  pills so the two aren't confused. The switcher DOM persists across route
+  changes; only the `.device` subtree is replaced. See M1 and the session log for
+  the two traps here (`app.innerHTML = ''`, and `offsetLeft` rounding).
+- **Content cards come in three styles** — summary, video, excerpt — one 88%-wide
+  card per view in a horizontally snap-scrolling row, on patterns 1–4. Order
+  varies per question from a fixed `CARD_ORDERS` table (not `Math.random()`, so
+  screenshots stay comparable). Portal keeps its own smaller card treatment.
+- **The card rows have velocity lag.** Each card trails the one before it by
+  ~17ms of travel, so a swipe stretches the row and closes it again instead of
+  moving as one plane. The constant is *derived* from
+  `reference/Animation/HorizontalSwipe.mp4`, not tuned by feel — measurements and
+  the reasoning are in M4's findings and the session log. Native scroll is
+  retained; no library.
 - Live at `https://ziyun-liang.github.io/topic-explore-patterns/`, current as of
-  commit `0d01365`. Verified against the **deployed** URL, not just localhost
+  commit `3b6c813`. Verified against the **deployed** URL, not just localhost
   (Playwright at 390×844 and 1440×900, zero console errors).
-- **Outstanding: never checked on a real phone.** Press feedback, switcher
-  scroll momentum, and now the whole M1 motion layer — cascade rhythm, accordion
-  height feel, whether rapid switcher tapping stutters — can't be verified from a
-  screenshot. Do this before treating any feel-dependent work as done.
+- **Outstanding: never checked on a real phone.** Everything feel-dependent is
+  unverified — press feedback, switcher scroll momentum, the M1 cascade rhythm
+  and accordion height, the 240ms thumb slide, the new card size and bar weights,
+  and above all the 17ms lag (it's subtle by design, and main-thread transforms
+  during iOS momentum scrolling are the one thing that could jank). Do this
+  before treating any of it as done.
 - Zero build step, zero dependencies. Plain `index.html` / `styles.css` /
   `content.js` / `patterns.js`. Hash routing (`#/carousel` etc.), pinned
   bottom switcher.
-- `content.js` is the one hand-edited data file — question copy per pattern.
-  Card counts per pattern are fixed (matching the source Figma sketch),
-  wired in `patterns.js`'s `CARD_COUNTS`, not content-driven.
+- `content.js` is the one hand-edited data file — question copy per pattern, and
+  the theme name. Question *counts* per pattern are fixed to match the source
+  Figma sketch (Carousel 3, Tabs 4, Accordion 5, Swipe 3, Portal 4); read its
+  header comment before editing. `patterns.js`'s `CARD_COUNTS` is now
+  **Portal-only** — patterns 1–4 render one card per question.
 - This repo (`ziyun-liang/topic-explore-patterns`, public) is the source of
   truth while iterating. Fold-in path to napp-100's `understand-intents`
   prototype is fully scoped in `README.md`'s "Path to hi-fi" section — not
@@ -109,6 +135,23 @@ everything else is scaffolding.
   Playwright check used to verify the original shell. For anything
   feel-dependent (drag, momentum, expand transitions), open the real
   deployed URL on an actual phone — a static screenshot can't show that.
+- **The single highest-value check in this repo: settled frames must be
+  pixel-identical.** Screenshot all 12 states (5 patterns + menu, × 390×844 and
+  1440×900) before and after, and pixel-diff them — `maxDelta` must be **0** for
+  anything you didn't intend to move. It has caught three real bugs that looked
+  fine by eye: a 28px accordion ghost, a layer-promotion AA shift, and proof the
+  velocity lag leaks nothing at rest. It also works in reverse — leave one pattern
+  untouched as a **control** (Portal, for the card change) and a `maxDelta = 0`
+  there proves the change didn't leak. Non-zero is a *result*, not a failure:
+  `maxDelta = 30` was exactly the card-fill-vs-bar-fill delta that proved the
+  excerpt change moved only bars.
+- **Verification scripts live in `/private/tmp`, never in the repo.** This repo is
+  public and ships as GitHub Pages; test harnesses aren't part of the artifact.
+  Rebuild them per session (they're short) rather than committing them. The
+  Playwright ones from 2026-08-16 — `tep-check` (audit + screenshots),
+  `tep-pixdiff`, `tep-geom`, `tep-behavior` (8 checks), `tep-thumb` (7),
+  `tep-lag2`/`tep-lag3` — are described in the session log if you need to
+  reconstruct one.
 - `content.js` stays the one hand-edited data file. Never hardcode question
   copy into `patterns.js`.
 - Default to zero build step / vanilla JS+CSS. Most animation libraries
@@ -119,6 +162,14 @@ everything else is scaffolding.
   `reference/` (gitignored — this repo is public, and reference clips of
   other products' motion shouldn't be published in it). Point at files
   there directly rather than pasting links.
+
+  **Measure them, don't eyeball them.** `/video-to-anim` + `ffmpeg` frame
+  extraction, then track actual geometry: frame-differencing to find the motion
+  window, hue-segmentation to isolate a moving element's bounding box, full-height
+  gutter detection for spacing between elements. That's how
+  `HorizontalSwipe.mp4` yielded a *derived* constant (17ms/card) instead of a
+  tuned-by-feel one, and how it disproved the "spring/elastic" reading of its own
+  motion. Extract frames to `/tmp`, not the repo.
 - **Real NYT content:** video/image assets staged ahead of M6 go in
   `assets/` (also gitignored — public repo, proprietary editorial content,
   same reasoning as the font decision above). This is separate from
@@ -176,7 +227,7 @@ question to resolve at kickoff — these are deliberately *not* resolved here.
 - [x] **M3 — Visual system refresh.** Done 2026-08-16. See the session log
   entry for what shipped and the governing rule.
 
-- [ ] **M4 — Motion research → framework decision.** Lindsey drops
+- [~] **M4 — Motion research → framework decision.** Lindsey drops
   reference videos into `reference/`; a session watches them, names 2–3
   concrete candidate approaches (GSAP `Draggable`/`Inertia`/`Flip` per the
   conventions above; Motion One and the native Web Animations API are
@@ -191,6 +242,28 @@ question to resolve at kickoff — these are deliberately *not* resolved here.
   library — interruptible, velocity-aware, gesture-driven motion (`Draggable` /
   `Inertia` for the swipe deck, `Flip` for card→full-screen in M5). Judge M4 on
   that, not on entrances.
+
+  **Progress 2026-08-16 — one of five videos watched (`HorizontalSwipe.mp4`), and
+  it settled three things.** Don't re-litigate these; do re-test them if the
+  remaining videos ask for something different:
+  1. **CSS scroll-driven animations are ruled out for velocity effects.**
+     `animation-timeline` is *position*-driven; velocity lag is *velocity*-driven.
+     This is a capability limit, not a preference — the reason the card-row lag is
+     a rAF loop.
+  2. **GSAP earns nothing while native scroll is retained.** A
+     velocity-proportional per-card offset is ~25 lines. GSAP's actual leverage is
+     `Draggable`/`Inertia` *owning the gesture*, and Lindsey chose to keep native
+     scroll — so that value stays unspent rather than disproven. It comes back on
+     the table the moment we take over the gesture (M5's card→full-screen is the
+     likely trigger, where `Flip` is also still unexamined).
+  3. **Licensing is no longer a factor either way** — GSAP is now 100% free,
+     Inertia included (verified 2026-08-16).
+
+  Also worth carrying forward: a **low-pass velocity filter cannot overshoot**,
+  which is why it beat a spring for this case — the reference settles
+  monotonically, so a spring would have needed deliberate critical damping to
+  suppress a bounce that isn't in the source material. If a later video *does*
+  show real overshoot, that's the moment a spring integrator earns its place.
 
 - [ ] **M5 — Pattern variants exploration.** Build the two named ideas:
   (a) Card Swipe becomes an in-place horizontal carousel rather than
@@ -352,8 +425,9 @@ promote into a milestone once there's enough shape to act on.
 - **2026-08-16 (third pass) — pattern header simplified.** Lindsey's sketch. The
   header now reads: a back row (chevron circle + the label **"Ways in"**), then
   the theme name as the title. Three deliberate calls behind it:
-  - **All five screens show the same title** (`AI education impact`, from
-    `CONTENT.topic`) and the pattern's own name is gone from inside the frame.
+  - **All five screens show the same title** (from `CONTENT.topic` — reworded to
+    `A.I. education impact` later the same day) and the pattern's own name is
+    gone from inside the frame.
     Which pattern you're in is the **switcher's** job — naming it in the header
     made every screen read as a labelled specimen rather than a product screen.
     Same argument as M2's switcher call. **Don't put the pattern name back**
@@ -686,7 +760,22 @@ promote into a milestone once there's enough shape to act on.
     argument for taking over the gesture after all (which is where `Draggable`/
     `Inertia` would finally earn their place).
 
-- **Next session** — M1 and M3 are both done and deployed. The open work is
-  M2's two deferred responsive bugs, then M4 (framework decision — read M4's
-  note about what M1 deliberately left unsolved). **Before treating M1 as
-  finished, open the live URL on a real phone.**
+- **Next session** — Lindsey wrapped 2026-08-16 with "I will start a new one to
+  fix more things", so **expect fixes to today's work first**, not the next
+  milestone. Everything below is deployed and verified in-browser but **none of
+  the eight changes made today has been felt on a phone** — read "Outstanding" in
+  Current state before assuming a feel complaint is a bug.
+
+  Read first if a fix touches these, because each hides a trap that already cost
+  time once: the switcher (persistent DOM — never reintroduce
+  `app.innerHTML = ''`; use `getBoundingClientRect()`, not `offsetLeft`, for the
+  thumb); the accordion (padding on a collapsing grid item can't collapse);
+  `.cards-row` (`scroll-padding-inline` is what makes the gutter survive
+  scroll-snap; direct `scrollLeft` is invalid for testing it); and any cascade
+  work (`animation-fill-mode: both` pins state, so the class must be stripped on
+  `animationend`).
+
+  Then the standing queue, unchanged: M2's two deferred responsive bugs → M4
+  (four reference videos still unwatched; three findings already settled, don't
+  re-litigate them) → M5. The two backlog items both explicitly want a phone
+  session before they're decided.
