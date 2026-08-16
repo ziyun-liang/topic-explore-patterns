@@ -468,6 +468,110 @@
 	// page you land on is worse than no label. Deliberately NO aria-label: the
 	// visible text is the accessible name, and an aria-label would override it,
 	// leaving voice-control users saying "tap Ways in" with nothing to match.
+	// ---------- Switcher ----------
+	//
+	// Built ONCE and kept alive across navigations. That's not tidiness, it's the
+	// requirement: the indicator can only travel between segments if it's the same
+	// DOM node before and after the route change. render() used to wipe all of
+	// #app on every hashchange, which rebuilt the switcher with the new segment
+	// already active — nothing to animate from. render() now replaces only the
+	// .device subtree so this node survives.
+	var switcherEl = null;
+
+	function buildSwitcher() {
+		if (switcherEl) return switcherEl;
+		var nav = document.createElement('nav');
+		nav.className = 'switcher';
+		nav.innerHTML =
+			'<div class="switcher-scroll"><div class="switcher-inner">' +
+			// Decorative: it's the fill behind whichever label is active, and the
+			// labels themselves carry the meaning.
+			'<span class="switcher-thumb" aria-hidden="true"></span>' +
+			PATTERNS.map(function (p) {
+				return '<a class="switcher-btn" href="#/' + p.id + '">' + p.label + '</a>';
+			}).join('') +
+			'</div></div>';
+		switcherEl = nav;
+		return nav;
+	}
+
+	// Moves the indicator onto the active segment. The five segments are five
+	// different widths, so both position and width come from measurement — CSS
+	// can't size an absolutely positioned element to its nth sibling.
+	//
+	// animate=false strips .ready, writes, forces a reflow, then re-adds it, so
+	// the new geometry is already committed before transitions come back on.
+	// Same remove -> reflow -> re-add idiom as .swap-in in renderTabs. Without it
+	// the indicator would slide in from the track's left edge on every arrival.
+	function positionThumb(nav, animate) {
+		if (!nav) return;
+		var thumb = nav.querySelector('.switcher-thumb');
+		var active = nav.querySelector('.switcher-btn.active');
+		var inner = nav.querySelector('.switcher-inner');
+		if (!thumb || !active || !inner) return;
+		if (!animate) thumb.classList.remove('ready');
+		// Rects, not offsetLeft/offsetWidth: those round to whole pixels, and the
+		// segment boxes are fractional, so the indicator landed up to a subpixel off
+		// its segment — visible as a hairline of track showing along one edge, worst
+		// on the last segment where the rounding has accumulated.
+		//
+		// Subtracting inner's own rect keeps this in inner's coordinate space, which
+		// is what the absolutely-positioned thumb is offset from. It's also
+		// scroll-independent (inner IS the scrolled content, so both rects shift
+		// together) and immune to .switcher's translateX(-50%) for the same reason.
+		var ir = inner.getBoundingClientRect();
+		var ar = active.getBoundingClientRect();
+		thumb.style.width = ar.width + 'px';
+		thumb.style.transform = 'translateX(' + (ar.left - ir.left) + 'px)';
+		if (!animate) {
+			void thumb.offsetWidth;
+			thumb.classList.add('ready');
+		}
+	}
+
+	function syncSwitcher(app, id) {
+		var nav = buildSwitcher();
+		// Detached means we're arriving from the menu (or first load), which should
+		// NOT slide — there's no previous segment to travel from.
+		var freshMount = nav.parentNode !== app;
+		if (freshMount) app.appendChild(nav);
+
+		var btns = nav.querySelectorAll('.switcher-btn');
+		Array.prototype.forEach.call(btns, function (b, i) {
+			b.classList.toggle('active', PATTERNS[i].id === id);
+		});
+
+		// Keep the active segment in view when arriving by deep link — with 5
+		// segments the last two sit outside the track at phone width.
+		//
+		// Measured from rects, NOT offsetLeft, deliberately. offsetLeft is relative
+		// to whatever the nearest POSITIONED ancestor happens to be, and adding
+		// .switcher-inner silently moved that from .switcher to .switcher-inner —
+		// which changed this sum by 24px (.switcher's 20px gutter + the track's 4px
+		// padding) without anything here looking wrong. The old inflated figure was
+		// pushing the active segment ~24px left of centre. Rects are immune to that
+		// class of mistake: the difference between two of them is the real onscreen
+		// distance, whatever the structure above does next.
+		var scroller = nav.querySelector('.switcher-scroll');
+		var active = nav.querySelector('.switcher-btn.active');
+		if (active && scroller.scrollWidth > scroller.clientWidth) {
+			var sr = scroller.getBoundingClientRect();
+			var ar = active.getBoundingClientRect();
+			scroller.scrollLeft = Math.max(
+				0,
+				scroller.scrollLeft + (ar.left - sr.left) - (sr.width - ar.width) / 2
+			);
+		}
+
+		positionThumb(nav, !freshMount);
+	}
+
+	function unmountSwitcher() {
+		if (switcherEl && switcherEl.parentNode) {
+			switcherEl.parentNode.removeChild(switcherEl);
+		}
+	}
+
 	function renderPatternView(shell, app, id) {
 		shell.innerHTML =
 			'<header class="pattern-header">' +
@@ -479,22 +583,11 @@
 			'</header>' +
 			'<main class="pattern-main"></main>';
 
-		// The switcher is a SIBLING of .app-shell, not a child. The desktop
-		// device frame clips its shell with overflow, and the switcher has to
-		// escape that to sit out on the field below the phone.
-		var nav = document.createElement('nav');
-		nav.className = 'switcher';
-		nav.innerHTML =
-			'<div class="switcher-scroll">' +
-			PATTERNS.map(function (p) {
-				return (
-					'<a class="switcher-btn' + (p.id === id ? ' active' : '') +
-					'" href="#/' + p.id + '">' + p.label + '</a>'
-				);
-			}).join('') +
-			'</div>';
-		app.appendChild(nav);
-
+		// The switcher is a SIBLING of .app-shell, not a child: the desktop device
+		// frame clips its shell with overflow, and the switcher has to escape that
+		// to sit out on the field below the phone. It's mounted and updated by
+		// syncSwitcher below rather than built here, because it has to outlive this
+		// function — see the comment on switcherEl.
 		var main = shell.querySelector('.pattern-main');
 		var directions = CONTENT.patterns[id].directions;
 		RENDERERS[id](main, directions);
@@ -507,24 +600,14 @@
 		//
 		// The switcher is deliberately NOT cascaded. It's harness chrome (per the
 		// M2 decision), so animating it on every route change draws the eye to
-		// the frame rather than the experiment. It's also load-bearing on two
-		// transforms that a cascade would fight: `translateX(-50%)` for centering
-		// at phone width, and the offsetLeft/clientWidth measurements the
-		// scroll-into-view block below depends on.
+		// the frame rather than the experiment. It's also load-bearing on three
+		// transforms a cascade would fight: `translateX(-50%)` for centering at
+		// phone width, the indicator's own translateX, and the offsetLeft /
+		// clientWidth measurements syncSwitcher depends on.
 		var next = cascade([shell.querySelector('.pattern-header')], 0);
 		cascade(main.querySelectorAll('.cascade-item'), next);
 
-		// Keep the active pill in view when arriving by deep link — with 5
-		// pills the last two are off-screen at phone width.
-		var scroller = nav.querySelector('.switcher-scroll');
-		var activePill = scroller.querySelector('.switcher-btn.active');
-		if (activePill && scroller.scrollWidth > scroller.clientWidth) {
-			scroller.scrollLeft = Math.max(
-				0,
-				activePill.offsetLeft -
-					(scroller.clientWidth - activePill.offsetWidth) / 2
-			);
-		}
+		syncSwitcher(app, id);
 	}
 
 	function render() {
@@ -541,16 +624,34 @@
 		shell.className = 'app-shell';
 		device.appendChild(shell);
 
-		app.innerHTML = '';
-		app.appendChild(device);
+		// Replace ONLY the .device subtree, not all of #app. #app's other child is
+		// the persistent switcher, and a CSS transition can't be relied on across a
+		// detach and re-attach — so destroying it here would kill the indicator's
+		// travel even though the variable still pointed at a live node.
+		var oldDevice = app.querySelector('.device');
+		if (oldDevice) app.removeChild(oldDevice);
+		app.insertBefore(device, app.firstChild);
 
 		if (!hash || !CONTENT.patterns[hash]) {
 			renderMenu(shell);
+			// The switcher doesn't belong on the menu. Removing it means the next
+			// arrival on a pattern is a fresh mount, which is exactly right: no
+			// slide coming from the menu, slide only between patterns.
+			unmountSwitcher();
 			return;
 		}
 		renderPatternView(shell, app, hash);
 	}
 
 	window.addEventListener('hashchange', render);
+
+	// Segment offsets move with the viewport (the desktop track centres, the phone
+	// track's width changes), and nothing else re-renders on resize — without this
+	// the indicator would sit under the wrong segment after a rotate or a window
+	// drag. Snaps rather than slides, so it doesn't chase a drag-resize.
+	window.addEventListener('resize', function () {
+		if (switcherEl && switcherEl.parentNode) positionThumb(switcherEl, false);
+	});
+
 	render();
 })();

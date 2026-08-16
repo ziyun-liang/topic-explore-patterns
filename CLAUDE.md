@@ -438,6 +438,64 @@ promote into a milestone once there's enough shape to act on.
     actually dropped 5 → 4 on most routes, since inactive segments are now
     transparent.
 
+- **2026-08-16 (sixth pass) — the switcher indicator slides.** Lindsey asked whether
+  the white pill could travel between segments rather than cut.
+  - **The switcher now PERSISTS across navigations, and that was the whole job.**
+    `render()` used to do `app.innerHTML = ''` on every `hashchange`, and
+    `renderPatternView` built a fresh `<nav class="switcher">` each time — so
+    tapping a segment destroyed the control and rebuilt it with the new segment
+    already active. Nothing to animate from. `render()` now replaces **only the
+    `.device` subtree** (`app.querySelector('.device')` → remove →
+    `insertBefore(device, app.firstChild)`), leaving the switcher node untouched.
+    A CSS transition can't be relied on across a detach and re-attach, so keeping
+    the node in the DOM is load-bearing, not tidiness. **Don't reintroduce
+    `app.innerHTML = ''`.**
+  - Same root-cause fix as M1's tab strip: stop rebuilding, keep the node, toggle a
+    class. `buildSwitcher` / `positionThumb` / `syncSwitcher` in `patterns.js`.
+  - On the menu route the switcher is unmounted, so returning to a pattern is a
+    fresh mount → no slide. Slide happens only between patterns, which is right.
+  - **No library.** GSAP `Flip` solves the rebuild case generically and is the M4
+    candidate, but using it here would pre-empt M4 (same reasoning as M1). View
+    Transitions would be ~3 lines but snapshots the whole document, cross-fading the
+    entire page and fighting M1's "cascade is the transition" decision.
+  - `--dur-slide: 240ms`. Transition is gated behind a `.ready` class so the first
+    placement lands silently — without the gate the indicator slides in from the
+    track's left edge on every arrival.
+  - **`width` is animated, against this file's transform/opacity-only discipline.**
+    Deliberate and commented: one contentless element, and animating `scaleX`
+    instead stretches the 999px radius into ellipses at the pill's ends.
+  - **Two bugs found on the way, both worth not rediscovering:**
+    1. **`offsetLeft` is relative to the nearest POSITIONED ancestor, and adding
+       `.switcher-inner` silently moved that.** It went from `.switcher` (which was
+       contributing its own 20px gutter + the track's 4px padding) to
+       `.switcher-inner` — a **24px** change in a sum that looked untouched. That
+       exposed the *old* scroll-centring as the wrong one: Accordion was sitting at
+       insets L101/R142, i.e. **41px off centre**. The maths now measures from
+       `getBoundingClientRect()`, which is immune to that whole class of mistake.
+       Accordion is now L121/R122; Card Swipe and Portal clamp at end-of-scroll,
+       which is correct.
+    2. **`offsetWidth`/`offsetLeft` round to whole pixels and the segment boxes are
+       fractional** — Portal's real box is 390.078 × 77.422. Rounding left the
+       indicator ~0.84px narrow, which at 2× DPR showed as nearly a full device
+       pixel of dark edge along the segment. Rects fixed it: measured delta is now
+       exactly 0.000/0.000.
+  - **A correction to my own verification plan:** it asserted the settled frames
+    would be *pixel-identical*, on the logic that the indicator replaces the active
+    segment's fill at the same place. That was too strong — a `transform`-positioned
+    element composites with subpixel antialiasing and can't byte-match a statically
+    laid-out background. The realistic invariant is: diffs confined to the switcher
+    region, tiny, and `maxDelta` low enough to be AA rather than misalignment.
+    Final state: 8 of 12 frames byte-identical; the other 4 differ by ~340px at
+    `maxDelta` ≤ 95 (AA), plus the deliberate centring change on the three phone
+    routes that scroll.
+  - Verified: 7/7 new indicator tests (geometry matches the segment on all 5 routes
+    at both breakpoints; slides with width interpolating 98→80→77; does NOT slide on
+    deep link or from the menu; reduced motion jumps with `transitionDuration: 0s`;
+    resize realigns) + the existing 7/7 behaviour suite + audit within targets + 0
+    console errors.
+  - **240ms is unverified on a real phone.** This is the control you touch most, and
+    whether the travel feels right is exactly what a screenshot can't show.
+
 - **Next session** — M1 and M3 are both done and deployed. The open work is
   M2's two deferred responsive bugs, then M4 (framework decision — read M4's
   note about what M1 deliberately left unsolved). **Before treating M1 as

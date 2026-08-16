@@ -74,6 +74,7 @@
 	--dur-enter: 280ms;  /* mount cascade, per item */
 	--dur-swap: 200ms;   /* tab content re-enter — tighter, reader is oriented */
 	--dur-height: 260ms; /* accordion open/close */
+	--dur-slide: 240ms;  /* switcher indicator travelling between segments */
 	--stagger: 40ms;
 	--rise: 8px;
 }
@@ -400,8 +401,6 @@ svg { display: block; }
    to stop. */
 
 .switcher-scroll {
-	display: flex;
-	gap: 0;
 	background: var(--g-1);
 	border-radius: var(--r-pill);
 	/* Inset so the active segment sits ON the track rather than filling it. */
@@ -414,8 +413,50 @@ svg { display: block; }
 	   scrolling segments instead. */
 }
 
+/* Exists purely to be an UNPADDED positioning context for the indicator, so a
+   segment's offsetLeft is exactly its distance from the track's inner edge. With
+   the indicator parented to the padded .switcher-scroll instead, every read and
+   write would need the 4px added or subtracted somewhere — which is precisely
+   where this kind of code silently drifts. */
+.switcher-inner {
+	position: relative;
+	display: flex;
+	gap: 0;
+}
+
+/* The indicator. This is what carries the active fill now — the active segment
+   itself has no background, so the fill can travel between segments instead of
+   blinking from one to the next.
+   Sized and positioned from JS (positionThumb in patterns.js), because the five
+   segments have five different widths and CSS has no way to size an absolutely
+   positioned element to its nth sibling. */
+.switcher-thumb {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 0;
+	border-radius: var(--r-pill);
+	background: var(--g-0);
+}
+
+/* Transition is gated behind .ready so the FIRST placement lands silently —
+   without the gate, every arrival on a pattern would slide the indicator in from
+   the track's left edge.
+   `width` is a layout property, against this file's usual transform/opacity-only
+   discipline. Deliberate: it's one contentless element, and the alternative —
+   animating scaleX — stretches the 999px radius into ellipses at the pill's ends. */
+.switcher-thumb.ready {
+	transition: transform var(--dur-slide) var(--ease-out),
+	            width var(--dur-slide) var(--ease-out);
+}
+
 .switcher-btn {
 	flex: 0 0 auto;
+	/* Lifts the label above the absolutely-positioned indicator, which would
+	   otherwise paint over static siblings regardless of DOM order. */
+	position: relative;
+	z-index: 1;
 	border: none;
 	border-radius: var(--r-pill);
 	background: transparent;
@@ -427,10 +468,8 @@ svg { display: block; }
 	cursor: pointer;
 }
 
-.switcher-btn.active {
-	background: var(--g-0);
-	color: var(--ink);
-}
+/* No background — .switcher-thumb is the fill. Only the colour changes here. */
+.switcher-btn.active { color: var(--ink); }
 
 /* Inactive segments have no fill, so the shared scale(0.97) alone would give
    almost no press feedback — only the text would move. A fill on press restores
@@ -817,12 +856,17 @@ svg { display: block; }
 	.switcher-scroll {
 		background: var(--g-0);
 		overflow: visible;
+	}
+
+	.switcher-inner {
 		flex-wrap: nowrap;
 		justify-content: center;
 	}
 
-	.switcher-btn { background: transparent; }
-	.switcher-btn.active { background: var(--ink); color: var(--g-0); }
+	/* Track went white out here, so the indicator takes the dark end of the ramp
+	   and the active label flips to white with it. */
+	.switcher-thumb { background: var(--ink); }
+	.switcher-btn.active { color: var(--g-0); }
 	.switcher-btn:not(.active):active { background: var(--g-1); }
 }
 
@@ -858,4 +902,9 @@ svg { display: block; }
 	.acc-body,
 	.acc-item.open .acc-body,
 	.acc-header .chevron { transition: none; }
+
+	/* The indicator jumps to the new segment instead of travelling. It still
+	   changes position, so the "you are here" information survives — only the
+	   movement is removed. */
+	.switcher-thumb.ready { transition: none; }
 }
