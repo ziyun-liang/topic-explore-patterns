@@ -1,0 +1,1279 @@
+/* styles.css
+ *
+ * Low-fi visual system. One typeface, a 4-step grey ramp, one radius family,
+ * and space as the ONLY separator — there are no hairline borders anywhere in
+ * this file, on purpose. If you find yourself reaching for `1px solid`, the
+ * real fix is more space.
+ *
+ * GOVERNING RULE: a grey fill means "tappable". Content sits on white and is
+ * separated by space alone. That's why --g-1 appears on menu items, tabs,
+ * accordion headers and switcher pills, and nowhere else. It keeps the fill
+ * semantic instead of decorative.
+ *
+ * TYPE DEFERRAL POINT: everything is --font-sans deliberately. At low-fi a
+ * serif makes a brand claim the prototype hasn't earned, and a reviewer can't
+ * tell whether they're judging the interaction pattern or the typeface. The
+ * NYTCheltenham / NYTFranklin swap happens at fold-in (see README "Fonts") —
+ * add a --font-serif then, not before. (The previous Georgia stand-in also
+ * silently lost its `font-weight: 500`, since Georgia ships Regular + Bold
+ * only.)
+ */
+
+:root {
+	/* Grey ramp — a ladder, not a puddle. Every step must be visible. */
+	--g-0: #ffffff;   /* phone surface; arrow-circle fill (the Ref 4 trick) */
+	--g-1: #f1f1f1;   /* tappable block fill */
+	--g-2: #e2e2e2;   /* placeholders — image well + text bars */
+	--g-3: #ededed;   /* meta bar only (date / byline) */
+	--g-4: #c4c4c4;   /* photo-glyph stroke */
+
+	--ink: #111111;   /* primary text; active/selected fill */
+	--ink-2: #5c5c5c; /* secondary */
+	--ink-3: #8a8a8a; /* muted / meta */
+
+	--field: #e6e6e6; /* desktop backdrop behind the device frame */
+
+	/* Radius — one family, nested (inner ≈ outer − padding) */
+	--r-lg: 20px;     /* tappable blocks, cards, deck, portal window */
+	--r-md: 12px;     /* placeholder image well inside a card */
+	--r-pill: 999px;  /* bars, tabs, switcher pills, arrow circles */
+	--r-frame: 44px;
+
+	/* Type — 4 roles with real jumps: 30 → 19 → 15 → 12 */
+	--t-display: 30px;
+	--t-title: 19px;
+	--t-body: 15px;
+	--t-meta: 12px;
+
+	/* Space — 4px base */
+	--s-2: 8px;
+	--s-3: 12px;
+	--s-4: 16px;
+	--s-5: 20px;
+	--s-6: 24px;
+	--s-7: 32px;
+
+	--gutter: 20px;
+	--group-gap: 32px;
+	--switcher-h: 72px;
+
+	--page-w: 440px;
+	--frame-w: 390px;
+	--frame-h: 844px;
+
+	--font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+
+	/* Motion — ONE set of values, used by all five patterns without exception.
+	   This prototype's job is a head-to-head comparison: if one pattern's
+	   entrance is more charming than another's, a reviewer prefers it for the
+	   wrong reason. Motion has to be a constant, not a variable. (Same
+	   reasoning as the switcher decision — harness craft must not contaminate
+	   the pattern being evaluated.) */
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+	--dur-press: 160ms;  /* press feedback */
+	--dur-enter: 280ms;  /* mount cascade, per item */
+	--dur-swap: 200ms;   /* tab content re-enter — tighter, reader is oriented */
+	--dur-height: 260ms; /* accordion open/close */
+	--dur-slide: 240ms;  /* switcher indicator travelling between segments */
+	--stagger: 40ms;
+	--rise: 8px;
+
+	/* Portal-only, and NOT part of the shared motion vocabulary above — it
+	   describes the shape of one pattern's own scroll->size mapping, not a
+	   duration or easing any other pattern uses, so it can't contaminate the
+	   head-to-head comparison the way a second easing would.
+	   Fraction of Portal's falloff distance that is a flat REST ZONE, where
+	   scrolling does NOT resize the focused card. 0 = the original pure
+	   linear ramp (no rest anywhere — every pixel of scroll resized every
+	   card, which read as mushy with no "lock in place" moment); higher =
+	   longer hold with a more abrupt handoff between cards. Read once per
+	   mount by patterns.js's readPortalPlateau(). */
+	--portal-plateau: 0.55;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+	margin: 0;
+	background: var(--g-0);
+	font-family: var(--font-sans);
+	color: var(--ink);
+	-webkit-font-smoothing: antialiased;
+	-webkit-tap-highlight-color: transparent;
+}
+
+button { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+
+svg { display: block; }
+
+/* ---------- Press feedback ----------
+   Every tappable gets the same 160ms scale-down. Instant physical feedback is
+   the cheapest credibility in the whole file. Hover is gated because touch
+   devices fire it on tap. */
+
+.menu-item,
+.acc-header,
+.tab,
+.switcher-btn,
+.back-link {
+	transition: transform var(--dur-press) var(--ease-out),
+	            background-color var(--dur-press) var(--ease-out),
+	            color var(--dur-press) var(--ease-out);
+}
+
+.menu-item:active,
+.acc-header:active,
+.tab:active,
+.switcher-btn:active,
+.back-link:active { transform: scale(0.97); }
+
+@media (hover: hover) and (pointer: fine) {
+	.menu-item:hover,
+	.acc-header:hover,
+	.tab:not(.active):hover,
+	.switcher-btn:not(.active):hover { background-color: #e9e9e9; }
+
+	/* .back-link has no fill of its own — the circle inside it is what responds,
+	   so the hover has to reach through rather than sit on the hovered element. */
+	.back-link:hover .back-btn { background-color: #e9e9e9; }
+}
+
+/* ---------- Appear cascade ----------
+   Content arriving, two-tier: the header lands, then each question-group
+   staggers in behind it. Cards arrive WITH their group rather than staggering
+   individually — the group is the unit each pattern is organizing, so that's
+   what the motion should express.
+
+   One keyframe drives the whole thing; JS only stamps --i (see cascade() in
+   patterns.js). Worst case is the 5-item accordion: last item starts at 160ms
+   and lands at 440ms.
+
+   Two things here are easy to get wrong:
+
+   · `both`, not `forwards`. `forwards` does not hold the START state during
+     animation-delay, so every staggered item flashes in at full opacity and
+     then animates — which defeats the stagger entirely. `both` (i.e.
+     `backwards` too) is what makes it work.
+
+   · Keyframes are correct here, despite the usual "prefer transitions for
+     interruptible UI" rule. That rule is about retargeting an element
+     mid-flight. This is a pure mount: the router rebuilds #app from scratch,
+     so these nodes are brand new every time and a keyframe restarting on a
+     fresh element IS the desired behaviour. Don't convert this to a
+     transition later. (.tab-content is the one persistent node that
+     re-animates — see .swap-in below for how that case differs.) */
+
+@keyframes rise-in {
+	from { opacity: 0; transform: translateY(var(--rise)); }
+	to   { opacity: 1; transform: none; }
+}
+
+.rise-in {
+	animation: rise-in var(--dur-enter) var(--ease-out) both;
+	animation-delay: calc(var(--i, 0) * var(--stagger));
+}
+
+/* Tab content re-entering after a tab change. Shallower rise and faster than
+   the mount, deliberately: the reader is already oriented, only the content
+   under the strip changed. */
+@keyframes swap-in {
+	from { opacity: 0; transform: translateY(4px); }
+	to   { opacity: 1; transform: none; }
+}
+
+.swap-in { animation: swap-in var(--dur-swap) var(--ease-out) both; }
+
+/* ---------- Shell ---------- */
+
+#app { min-height: 100vh; }
+
+.app-shell {
+	max-width: var(--page-w);
+	margin: 0 auto;
+	min-height: 100vh;
+	background: var(--g-0);
+	position: relative;
+	display: flex;
+	flex-direction: column;
+}
+
+/* .device is a passthrough on phone-width viewports and becomes the frame on
+   desktop. Its ::after is the home indicator, which has to live outside the
+   scrolling .app-shell so it doesn't scroll away. */
+.device { display: contents; }
+.device::after { display: none; }
+
+/* ---------- Menu (#/) ---------- */
+
+.menu { padding: var(--s-7) var(--gutter) var(--s-7); }
+
+.menu-eyebrow {
+	font-size: var(--t-meta);
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--ink-3);
+	margin: 0 0 var(--s-2);
+}
+
+.menu-title {
+	font-size: var(--t-display);
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+	margin: 0 0 var(--s-7);
+}
+
+/* Deliberately roomy — Ref 4 spends ~150px of height on one line of text.
+   28px of vertical padding lands each row near 76px, which is the generosity
+   that made that reference read as considered. */
+.menu-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--s-4);
+	width: 100%;
+	text-align: left;
+	padding: 28px var(--s-5);
+	border: none;
+	border-radius: var(--r-lg);
+	background: var(--g-1);
+	margin-bottom: var(--s-3);
+	cursor: pointer;
+}
+
+.menu-item-name {
+	font-size: var(--t-title);
+	font-weight: 500;
+	letter-spacing: -0.01em;
+}
+
+/* Returning to white on a grey block is the entire charm of Ref 4, and it
+   needs no shadow to read. */
+.menu-item-arrow {
+	flex: 0 0 auto;
+	width: 36px;
+	height: 36px;
+	border-radius: var(--r-pill);
+	background: var(--g-0);
+	display: grid;
+	place-items: center;
+	color: var(--ink);
+}
+
+/* ---------- Pattern view header ---------- */
+
+.pattern-header {
+	position: sticky;
+	top: 0;
+	z-index: 15;
+	background: var(--g-0);
+	padding: var(--s-5) var(--gutter) var(--s-4);
+}
+
+/* Content dissolves under the sticky header instead of hard-cutting against a
+   border. */
+.pattern-header::after {
+	content: '';
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	height: var(--s-5);
+	background: linear-gradient(var(--g-0), rgba(255, 255, 255, 0));
+	pointer-events: none;
+}
+
+/* The whole row is the link, circle AND label, not just the circle: 36px alone
+   sits right on the WCAG 2.5.8 floor, and a chevron paired with its destination
+   is the standard back affordance.
+
+   This does bend "grey fill means tappable" — the label carries no fill. It's a
+   deliberate exception, not drift: that rule exists to stop *content* from
+   reading as tappable, and a back label isn't content. Don't generalise from it. */
+.back-link {
+	display: inline-flex;
+	align-items: center;
+	gap: var(--s-3);
+	margin-bottom: var(--s-5);
+	cursor: pointer;
+	/* Left, not centre: the circle is a fixed landmark at the row's start, so
+	   centre-origin scaling would visibly slide it right on press. From the left
+	   the circle holds still and only the label compresses. */
+	transform-origin: left center;
+}
+
+.back-btn {
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	width: 36px;
+	height: 36px;
+	border-radius: var(--r-pill);
+	background: var(--g-1);
+	color: var(--ink);
+	transition: background-color var(--dur-press) var(--ease-out);
+}
+
+/* Same size and weight as .menu-item-name — these are the same role (a
+   navigable destination), and this one is greyed because you've already been
+   there. */
+.back-label {
+	font-size: var(--t-title);
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	color: var(--ink-3);
+}
+
+.pattern-header .screen-title {
+	display: block;
+	font-size: var(--t-display);
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	line-height: 1.15;
+}
+
+.pattern-main {
+	flex: 1;
+	padding: var(--s-6) 0 calc(var(--switcher-h) + var(--s-7));
+}
+
+/* ---------- Switcher ----------
+   Harness chrome, not product chrome. A bottom tab bar would read as app
+   navigation and contaminate the pattern being evaluated — so it's a pill row,
+   and on desktop it lifts out of the phone entirely (see the frame block).
+   Scrolling means 5 items are never cramped. */
+
+.switcher {
+	position: fixed;
+	bottom: 0;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 100%;
+	max-width: var(--page-w);
+	z-index: 20;
+	/* The gutter moved here from the scroller when the switcher became a track:
+	   the TRACK is what needs insetting from the phone's edges now, and its own
+	   4px padding is the inset for the active segment. */
+	padding: var(--s-3) var(--gutter) max(var(--s-3), env(safe-area-inset-bottom));
+	background: var(--g-0);
+}
+
+/* Content dissolves into the bar instead of meeting a border. */
+.switcher::before {
+	content: '';
+	position: absolute;
+	bottom: 100%;
+	left: 0;
+	right: 0;
+	height: var(--s-5);
+	background: linear-gradient(rgba(255, 255, 255, 0), var(--g-0));
+	pointer-events: none;
+}
+
+/* ---------- Tab strip ----------
+   UPDATE 2026-08-16: the switcher used to share this rule, on the reasoning that
+   "the tab strip and the switcher are the same control shape, so they can't
+   drift apart." That was exactly the problem — two controls with an identical
+   shape on one screen read as the same KIND of thing, and these two aren't: the
+   tab strip is the pattern under test, the switcher navigates the harness. They
+   are now deliberately different shapes. Keep them that way.
+
+   The switcher's segments still live in an inner element (.switcher-scroll)
+   rather than on .switcher itself, because clipping on the parent would cut off
+   its top-fade pseudo-element, which sits outside the box. */
+
+.tab-strip {
+	display: flex;
+	gap: var(--s-2);
+	padding-inline: var(--gutter);
+	overflow-x: auto;
+	scroll-padding-inline: var(--gutter);
+	scrollbar-width: none;
+	/* Pills fade out at the edges rather than being guillotined mid-word. Full
+	   opacity begins exactly at the gutter, so the row is crisp at rest. */
+	-webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--gutter),
+	                    #000 calc(100% - var(--gutter)), transparent 100%);
+	mask-image: linear-gradient(to right, transparent 0, #000 var(--gutter),
+	            #000 calc(100% - var(--gutter)), transparent 100%);
+}
+
+.switcher-scroll::-webkit-scrollbar,
+.tab-strip::-webkit-scrollbar { display: none; }
+
+/* ---------- Switcher: segmented toggle ----------
+   One grey track holding all five segments, with the active one lifted out in
+   white. The white-on-grey move is this file's existing vocabulary, not a new
+   invention — it's the same trick as .menu-item-arrow, where returning to white
+   on a grey block is what makes the affordance read without a shadow.
+
+   Segments abut (gap: 0). The track is what groups them, and gaps would pull it
+   back toward reading as a row of separate pills — the thing this change exists
+   to stop. */
+
+.switcher-scroll {
+	background: var(--g-1);
+	border-radius: var(--r-pill);
+	/* Inset so the active segment sits ON the track rather than filling it. */
+	padding: 4px;
+	overflow-x: auto;
+	scrollbar-width: none;
+	/* No edge mask here, unlike .tab-strip: a toggle needs crisp rounded ends,
+	   and fading the track's own edges to transparent would dissolve the very
+	   boundary that makes it read as one control. The border-radius clips the
+	   scrolling segments instead. */
+}
+
+/* Exists purely to be an UNPADDED positioning context for the indicator, so a
+   segment's offsetLeft is exactly its distance from the track's inner edge. With
+   the indicator parented to the padded .switcher-scroll instead, every read and
+   write would need the 4px added or subtracted somewhere — which is precisely
+   where this kind of code silently drifts. */
+.switcher-inner {
+	position: relative;
+	display: flex;
+	gap: 0;
+}
+
+/* The indicator. This is what carries the active fill now — the active segment
+   itself has no background, so the fill can travel between segments instead of
+   blinking from one to the next.
+   Sized and positioned from JS (positionThumb in patterns.js), because the five
+   segments have five different widths and CSS has no way to size an absolutely
+   positioned element to its nth sibling. */
+.switcher-thumb {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	width: 0;
+	border-radius: var(--r-pill);
+	background: var(--g-0);
+}
+
+/* Transition is gated behind .ready so the FIRST placement lands silently —
+   without the gate, every arrival on a pattern would slide the indicator in from
+   the track's left edge.
+   `width` is a layout property, against this file's usual transform/opacity-only
+   discipline. Deliberate: it's one contentless element, and the alternative —
+   animating scaleX — stretches the 999px radius into ellipses at the pill's ends. */
+.switcher-thumb.ready {
+	transition: transform var(--dur-slide) var(--ease-out),
+	            width var(--dur-slide) var(--ease-out);
+}
+
+.switcher-btn {
+	flex: 0 0 auto;
+	/* Lifts the label above the absolutely-positioned indicator, which would
+	   otherwise paint over static siblings regardless of DOM order. */
+	position: relative;
+	z-index: 1;
+	border: none;
+	border-radius: var(--r-pill);
+	background: transparent;
+	color: var(--ink-2);
+	font-size: var(--t-body);
+	font-weight: 500;
+	padding: var(--s-3) 18px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+/* No background — .switcher-thumb is the fill. Only the colour changes here. */
+.switcher-btn.active { color: var(--ink); }
+
+/* Inactive segments have no fill, so the shared scale(0.97) alone would give
+   almost no press feedback — only the text would move. A fill on press restores
+   it. --g-2 is darker than the track, so it reads as pressed-in. */
+.switcher-btn:not(.active):active { background: var(--g-2); }
+
+/* Same type and padding as .switcher-btn above — deliberately identical, per
+   Lindsey: only the CONTAINER differs between the two controls, not the
+   typography. */
+.tab {
+	flex: 0 0 auto;
+	border: none;
+	border-radius: var(--r-pill);
+	background: var(--g-1);
+	color: var(--ink-2);
+	font-size: var(--t-body);
+	font-weight: 500;
+	padding: var(--s-3) 18px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.tab.active { background: var(--ink); color: var(--g-0); }
+
+/* ---------- Shared: question + card row ---------- */
+
+.direction { padding: 0 var(--gutter); }
+.direction + .direction { margin-top: var(--group-gap); }
+
+.q-title {
+	font-size: var(--t-title);
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	line-height: 1.35;
+	margin: 0 0 var(--s-4);
+}
+
+/* ---------- Card row ----------
+   Was a static 2-up row of flat thumbnails; now a horizontal scroller carrying
+   one card of each content kind. Same recipe as .portal-strip.
+
+   The negative margin lets the row bleed to its container's edge while the
+   matching padding holds the first card at the gutter — so cards scroll off the
+   screen edge (Carousel/Tabs) or the panel edge (Accordion) rather than stopping
+   short inside the text column. It assumes the container's own horizontal padding
+   equals --gutter, which is why .acc-body sets exactly that. */
+.cards-row {
+	display: flex;
+	gap: var(--s-3);
+	margin-inline: calc(-1 * var(--gutter));
+	padding-inline: var(--gutter);
+	overflow-x: auto;
+	scroll-snap-type: x mandatory;
+	/* Required, not decorative. The snapport defaults to the PADDING box, whose
+	   left edge is the border edge — so scroll-snap-align:start aligned the first
+	   card to x=0 and mandatory snapping scrolled the row by 20px to get it there,
+	   eating the gutter. This insets the snapport so the snap target is the gutter.
+	   .tab-strip already carries the same line for the same reason. */
+	scroll-padding-inline: var(--gutter);
+	-webkit-overflow-scrolling: touch;
+	scrollbar-width: none;
+}
+
+.cards-row::-webkit-scrollbar { display: none; }
+
+/* 88% leaves the next card peeking, matching the Figma's 355-in-400. Sizing lives
+   on the ROW's children rather than on .card itself, because the swipe deck reuses
+   .card with position:absolute/inset:0, where flex-basis and aspect-ratio are both
+   inert. */
+.cards-row > .card {
+	flex: 0 0 88%;
+	aspect-ratio: 355 / 473;
+	scroll-snap-align: start;
+}
+
+/* Trailing runway, so the LAST card can still snap flush to the left edge — the
+   scroll range would otherwise clamp ~40px short of it. 12% is the exact
+   complement of the 88% above: keep the two in sync if either changes.
+   A margin, not padding-right on the row: padding shrinks the content box that
+   the 88% resolves against, which is the bug that once silently collapsed
+   Portal's peek into a cropped 2-up. */
+.cards-row > .card:last-child { margin-right: 12%; }
+
+/* ---------- Content cards ----------
+   Three kinds — Excerpt, Video, Summary — from Figma node 199:4522. All three
+   share one box; only the inner arrangement differs.
+
+   The fills come straight off this project's own ramp (sampled from the Figma
+   render, not eyeballed): card --g-2, bars/glyph/rule --g-4. Note that puts the
+   ramp one step deeper than M3 named it — --g-2 was "placeholder well" and is now
+   "card surface", --g-4 was "photo-glyph stroke" and is now bars. The
+   grey-fill-means-tappable rule still holds: a content card IS tappable. */
+.card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--s-5);
+	padding: var(--s-5);
+	background: var(--g-2);
+	border-radius: var(--r-lg);
+	/* Belt and braces: the box is a fixed aspect-ratio, so a future copy change
+	   that lengthens the excerpt can't spill out of it. */
+	overflow: hidden;
+}
+
+/* Bars are 16px/25px, not .ph-bar's 9px. Deliberate: .ph-bar was sized for a
+   ~170px thumbnail and reads as dust inside a card this size. .ph-bar is left
+   untouched because Portal still uses it. */
+.card-bar {
+	height: 16px;
+	border-radius: var(--r-pill);
+	background: var(--g-4);
+	flex: 0 0 auto;
+}
+
+.card-bar--head { height: 25px; }
+
+/* The glyph area takes whatever height the card's fixed box leaves over, which is
+   what centres the photo and play marks vertically as drawn. */
+.card-glyph {
+	flex: 1;
+	min-height: 0;
+	display: grid;
+	place-items: center;
+	color: var(--g-4);
+}
+
+.card-glyph svg { width: 28%; height: auto; }
+
+/* Bottom group for Summary and Video. margin-top:auto pins it to the base of the
+   card whatever the glyph area does. */
+.card-foot {
+	display: flex;
+	flex-direction: column;
+	gap: var(--s-2);
+	margin-top: auto;
+}
+
+/* --- Excerpt --- */
+
+.card-byline {
+	display: flex;
+	align-items: center;
+	gap: var(--s-3);
+	flex: 0 0 auto;
+}
+
+.card-avatar {
+	flex: 0 0 auto;
+	width: 50px;
+	height: 50px;
+	border-radius: var(--r-pill);
+	background: var(--g-4);
+}
+
+.card-byline .card-bar { width: 62px; }
+
+/* Natural height and vertically centred, NOT stretched to fill (Figma 201:5664).
+   The stretch was what made this card read heavy: .card-quote took flex:1 and the
+   lines spread with space-between, so eight bars fanned out across every available
+   pixel and the block ran from just under the byline to the bottom padding with no
+   air anywhere. Figma holds the content at ~68% of the card height and splits the
+   slack top and bottom. */
+.card--excerpt {
+	justify-content: center;
+	/* Wider inset than the other two kinds (20px), because this is the only dense
+	   one — ten bars running the full content width is what made it read heavy
+	   beside a glyph and two lines. 32px puts the text block at 17%–90% of the card
+	   width, against the Figma's 19%–89% (201:5664: rule at x=34, text 68→316 in a
+	   355 card). Horizontal only: justify-content:center already yields 49px of
+	   vertical air, well clear of the 20px block padding. */
+	padding-inline: var(--s-7);
+}
+
+/* The rule stretches to the text block's height by default flex alignment — it
+   marks the quote, so it should match the quote, not the card. */
+.card-quote {
+	display: flex;
+	gap: var(--s-3);
+	flex: 0 0 auto;
+	min-height: 0;
+}
+
+.card-rule {
+	flex: 0 0 8px;
+	border-radius: var(--r-pill);
+	background: var(--g-4);
+}
+
+/* A fixed gap, not space-between. space-between was letting the eight lines fan
+   out to whatever height was going, which is the whole reason the card felt heavy.
+   10px matches the Figma's 26px line pitch (16px bar + 10px gap) — an absolute
+   value like the bar heights and the avatar above, because this component is
+   dimensioned from the Figma rather than from the spacing scale. */
+.card-body {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+/* ---------- Placeholders ----------
+   The placeholder IS the visual language here — it's most of the pixels. A
+   flat rectangle is an *undesigned* placeholder; the photo glyph and the
+   pill-rounded bars are what make Ref 2 read as deliberate. */
+
+.ph-img {
+	width: 100%;
+	aspect-ratio: 1 / 1;
+	background: var(--g-2);
+	border-radius: var(--r-md);
+	display: grid;
+	place-items: center;
+	color: var(--g-4);
+}
+
+/* Sized as a proportion of the well, not a fixed px — the wells range from
+   ~170px (flat thumbnail) to ~245px (portal card), and a fixed 28px read as a
+   speck in the larger ones. Ref 2's glyph is ~25% of its well. */
+.ph-img svg { width: clamp(28px, 22%, 46px); height: auto; }
+
+.ph-bar {
+	height: 9px;
+	border-radius: var(--r-pill);
+	background: var(--g-2);
+}
+
+.ph-bar--meta {
+	height: 8px;
+	background: var(--g-3);
+	margin-top: 2px;
+}
+
+/* Filled card skeleton — used where a card reads as a physical object (swipe
+   deck, portal strip) rather than a flat thumbnail. */
+.ph-card {
+	display: flex;
+	flex-direction: column;
+	gap: var(--s-2);
+	padding: var(--s-3);
+	background: var(--g-1);
+	border-radius: var(--r-lg);
+}
+
+.ph-card .ph-img {
+	flex: 1;
+	aspect-ratio: auto;
+	min-height: 0;
+}
+
+/* ---------- Carousel (#/carousel) ---------- */
+/* Uses .direction / .q-title / .cards-row as-is. */
+
+/* ---------- Tabs (#/tabs) ---------- */
+
+/* Shape, fill and mask come from the shared pill-row rules above. */
+.tab-strip { padding-bottom: var(--s-6); }
+
+/* The gutter the card row bleeds back out of. .tab-content used to hold a
+   .direction, which brought its own gutter; now it holds the row directly, so
+   without this the row bleeds 20px past BOTH screen edges and the cards compute
+   88% of the wrong width (measured: 430px-wide row, 343px cards, vs 390/308
+   everywhere else). */
+.tab-content { padding-inline: var(--gutter); }
+
+/* The two-line min-height that used to live here is gone with the question
+   heading itself (Figma 199:5046 — the active pill IS the question, so repeating
+   it below was saying the same thing twice). The 25px card jump it existed to
+   prevent can't recur either: every card is now the same fixed aspect-ratio, so
+   swapping tabs can't change the content's height. */
+
+/* ---------- Accordion (#/accordion) ---------- */
+
+/* The gutter lives on the list, not the item, because the item now carries the
+   grey — leaving it on the item would bleed the fill into the gutter. */
+.acc-list { padding: 0 var(--gutter); }
+
+/* The whole open item is ONE grey block wrapping header AND cards (Figma
+   199:5146), rather than a grey header with content loose on white below it. The
+   grey therefore moved here from .acc-header.
+   overflow:hidden is load-bearing twice over: it clips the bleeding card row at
+   the panel edge instead of letting it escape, and it keeps the fill inside the
+   rounded corners. */
+.acc-item {
+	background: var(--g-1);
+	border-radius: var(--r-lg);
+	overflow: hidden;
+}
+
+.acc-item + .acc-item { margin-top: var(--s-3); }
+
+.acc-header {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: var(--s-4);
+	text-align: left;
+	padding: var(--s-5);
+	border: none;
+	border-radius: var(--r-lg);
+	background: transparent;
+	cursor: pointer;
+	font-size: var(--t-title);
+	font-weight: 500;
+	letter-spacing: -0.01em;
+	line-height: 1.35;
+}
+
+.acc-header .chevron {
+	flex: 0 0 auto;
+	display: grid;
+	place-items: center;
+	width: 36px;
+	height: 36px;
+	border-radius: var(--r-pill);
+	background: var(--g-0);
+	color: var(--ink);
+	/* Matched to --dur-height so the chevron and the panel finish together —
+	   they read as one gesture, and a 60ms mismatch is visible in slow motion. */
+	transition: transform var(--dur-height) var(--ease-out);
+}
+
+.acc-item.open .chevron { transform: rotate(180deg); }
+
+/* The header has no fill of its own now, so the shared scale(0.97) would move
+   only the text. A fill on press restores the feedback — same fix the switcher's
+   inactive segments needed. --g-2 is darker than the panel, so it reads as
+   pressed in. */
+.acc-header:active { background: var(--g-2); }
+
+/* Height animation via grid-template-rows 0fr→1fr. This is the only way to
+   transition to a CONTENT-DRIVEN height without measuring scrollHeight in JS:
+   the outer grid animates its single row, and the inner element is what gets
+   clipped. Needs Chrome 117+ / Safari 17.4+ / Firefox 120+; anywhere older it
+   simply snaps, which is exactly the behaviour this replaced. */
+.acc-body-outer {
+	display: grid;
+	grid-template-rows: 0fr;
+	transition: grid-template-rows var(--dur-height) var(--ease-out);
+}
+
+.acc-item.open .acc-body-outer { grid-template-rows: 1fr; }
+
+.acc-body {
+	overflow: hidden;
+	/* Required. Grid items default to min-height:auto, which refuses to shrink
+	   below content size — without this the row never collapses to 0. */
+	min-height: 0;
+	/* Asymmetric on purpose. Closing: fade out fast, so the cards are gone
+	   before the height lands instead of being visibly guillotined. */
+	opacity: 0;
+	transition: opacity var(--dur-press) var(--ease-out);
+}
+
+/* Opening: let the height lead by 60ms, so cards don't appear inside a panel
+   that hasn't opened yet. */
+.acc-item.open .acc-body {
+	opacity: 1;
+	transition: opacity var(--dur-height) var(--ease-out) 60ms;
+}
+
+/* The body's inset lives on its CHILD, not on .acc-body itself, and this is
+   load-bearing: padding on a collapsing grid item cannot collapse. min-height:0
+   lets the item's CONTENT shrink to zero, but padding is always laid out, so
+   0fr floored at 28px (20 + 8) and every closed panel kept a 28px ghost —
+   which pushed the last item down 56px and clipped it under the switcher.
+   Measured, not guessed: grid-template-rows computed to 28px instead of 0px.
+   Putting the padding inside the overflow:hidden box lets it be clipped away.
+   Scoped to .acc-body so the shared .cards-row used by carousel/tabs is
+   untouched.
+
+   margin-inline is cancelled here for the same reason. Elsewhere the row bleeds
+   out of its container's gutter to reach the screen edge; inside an accordion
+   panel there is no horizontal padding to cancel (it can't live on .acc-body,
+   per above), so bleeding would push the cards flush against the panel edge. At
+   0 the row spans the panel and its own padding-inline holds the cards inset,
+   with .acc-item's overflow clipping the scroll at the panel edge.
+   Top padding is small because .acc-header already contributes 20px below its
+   text; together they make the ~28px the Figma shows. */
+.acc-body .cards-row {
+	margin-inline: 0;
+	padding-block: var(--s-2) var(--s-5);
+}
+
+/* ---------- Card Swipe (#/swipe) ---------- */
+
+.swipe-group { padding: 0 var(--gutter); }
+.swipe-group + .swipe-group { margin-top: var(--group-gap); }
+
+/* Sized and aligned to match the scrolling rows: same 88% width, same
+   355/473 box. Was a narrow 62%/248px stack centred in the column — the new cards
+   are content-bearing enough that centring a small deck read as a different
+   object from the same cards elsewhere. */
+.deck {
+	position: relative;
+	width: 88%;
+	aspect-ratio: 355 / 473;
+	/* Left-aligned now, not `auto` — the deck starts at the gutter like every
+	   other card row. The bottom margin still has to clear the stacked cards
+	   before the hint. */
+	margin: var(--s-4) 0 var(--s-7);
+	touch-action: pan-y;
+}
+
+.deck-card {
+	position: absolute;
+	inset: 0;
+	border-radius: var(--r-lg);
+	/* The deck is the one place a shadow is earned: the cards share a fill, so
+	   depth is the only thing that separates them from each other and from the
+	   white page. Faded opacity was washing them out — offset + scale + shadow
+	   carries the stack instead (see layout() in patterns.js). */
+	box-shadow: 0 4px 14px -3px rgba(0, 0, 0, .16);
+	transition: transform .28s var(--ease-out), opacity .28s var(--ease-out);
+	cursor: grab;
+	will-change: transform;
+}
+
+.deck-card:active { cursor: grabbing; }
+.deck-card.dragging { transition: none; }
+
+.deck-hint {
+	text-align: center;
+	font-size: var(--t-meta);
+	font-weight: 500;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--ink-3);
+	margin: 0;
+}
+
+/* ---------- Portal (#/portal) ----------
+   Redesigned 2026-08-16 from a horizontal scroll-snap strip (see git history)
+   to a vertical list where exactly one question is "focused": it shows a big
+   depth-stacked preview of its 3 content cards, while every other question
+   collapses to a plain one-line row. Which one is focused tracks scroll
+   position CONTINUOUSLY (not a snap-then-animate paged transition) — driven
+   by patterns.js's portalFocusTick(), which writes a --focus (0–1) custom
+   property per group every scroll frame. This file only defines what --focus
+   MEANS visually; it never sets it.
+
+   Collapsed row height (100px) is pulled from Figma (qMKFOJCaalehqHh2j8CUCF,
+   node 199:5483) by measuring the rendered screenshot, not the raw node
+   tree — the raw child-node coordinates for the stacked cards turned out to
+   be authored in a different coordinate space than the frame that visually
+   contains them, so trust the screenshot over the metadata here.
+   Expanded height is 292px, NOT the 258px measured the same way — two
+   corrections stacked on top of the Figma number, both Lindsey's explicit
+   calls, both added as extra height rather than taken from anywhere else:
+     +18px: at 258, the avatar's own bottom edge landed a fraction of a px
+     above where this row's padding starts — essentially zero breathing
+     room before the hard overflow:hidden edge.
+     +16px: more air between the title and the row's own top edge,
+     specifically in the expanded state (matches the top-padding blend
+     below). This ALSO has to add to the row's total height, not just to
+     padding — padding-top pushes everything below it (title, stack,
+     avatar) down by the same amount, and without adding it back here it
+     would silently eat back into the +18px clearance just added above,
+     shrinking it from 18px to 2px.
+   Both corrections only pushed this row's OWN bottom edge down (raising
+   its total height) — neither touched the title block or the front card's
+   position within the stack, which is why they didn't need to shift
+   anything above them to make room.
+   Deliberately no CSS transition on height: --focus is written every rAF
+   frame during a scroll, and a transition would fight those writes with a
+   stale interpolation of its own. */
+/* Missed on the first pass: every row in Figma carries the same --g-1
+   tappable-grey fill as the Accordion's own rows (both collapsed AND
+   expanded — only height differs), but this rule never actually set a
+   background. Caught by a direct side-by-side screenshot comparison, not by
+   re-reading the code — the plan said to keep it, the CSS just didn't.
+   Padding matches .acc-header's own convention for a single grey-filled
+   block (all four sides, not just the list's horizontal gutter).
+
+   flex/justify-content:center WAS tried and reverted once, on the theory
+   that centering distributes overflow evenly above AND below, clipping the
+   title along with the card. Re-tried after the two height corrections
+   above and it turns out that concern doesn't hold with these numbers —
+   .portal-stack's absolutely-positioned children (the cards) don't count
+   toward the flex container's own flow height, only its declared 176px
+   does, and title(~42px)+stack(176px) leaves enough slack inside the
+   292px-tall expanded row that centering shifts everything by a few px,
+   not enough to clip the title. Verified visually before keeping this,
+   not assumed. Centering ALSO fixes the collapsed state matching Figma
+   204:7942 (measured: text sits within ~2px of the row's own vertical
+   center there), which plain top-down flow with fixed padding could not
+   do for both row sizes from one rule.
+
+   text-align:center on .q-title here (not the shared rule other patterns
+   use) — same 204:7942 reference, confirmed on both one-line and
+   two-line-wrapped questions.
+
+   Top padding still blends with --focus the same way height does
+   (Lindsey's call: more air above the title once the card stack is open)
+   — --s-5 collapsed, growing to --s-5 + 16px expanded. Bottom padding
+   stays flat at --s-5; the avatar's own clearance is handled by the row's
+   total height above, not by padding. */
+/* margin-inline, not the list-wrapper pattern .acc-list uses: .portal-group
+   is the only element here, so giving IT the outer inset directly is the
+   smaller change. Caught by Lindsey checking against the live viewport,
+   not by re-reading this file: the box's own padding below only ever
+   inset the TEXT from the box's edges — nothing inset the BOX from the
+   viewport, since .pattern-main (its parent) has no horizontal padding of
+   its own. Every other pattern avoids this because either their list
+   wrapper or their item already carries --gutter as an outer margin;
+   Portal's row never got one. Matches the shared --gutter token (20px),
+   not the 25px this specific Figma frame (204:7942) measures — Lindsey's
+   explicit call, for consistency with every other pattern's outer inset
+   in this file rather than exactness to one frame. */
+.portal-group {
+	margin-inline: var(--gutter);
+	padding: calc(var(--s-5) + var(--focus, 0) * 16px) var(--gutter) var(--s-5);
+	height: calc(100px + var(--focus, 0) * 192px);
+	overflow: hidden;
+	background: var(--g-1);
+	border-radius: var(--r-lg);
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+}
+
+.portal-group .q-title {
+	text-align: center;
+	/* The shared .q-title rule's margin-bottom (--s-4, 16px, no matching
+	   top margin) is invisible but still counts toward the flex item's
+	   centered block — measured this directly: with a flat 16px margin
+	   the collapsed row centered title+margin as one unit, landing the
+	   TEXT itself 8px above true center (29px gap above vs 45px below,
+	   should be ~37/37). Blending it to 0 at --focus:0 removes that bias
+	   exactly when there's no stack below to need the gap; it grows back
+	   to the full 16px expanded, where the gap in front of the stack is
+	   the whole point. */
+	margin-bottom: calc(var(--focus, 0) * var(--s-4));
+}
+.portal-group + .portal-group { margin-top: var(--group-gap); }
+
+/* Reserves deliberate extra scroll distance below the last question so it
+   can reach --focus:1 on a real phone (patterns.js's renderPortal has the
+   full reasoning — the natural document height alone is nowhere near
+   enough). Height tuned empirically against a live measurement of the
+   LAST row's --focus at max scroll, same method used for every other
+   number in this file — not computed analytically. See CLAUDE.md for the
+   measured value this settled on and the phone/desktop split, if either
+   ever needs re-deriving after a content change. */
+.portal-scroll-spacer { height: 500px; }
+
+/* The focus line's fixed offset can only be captured correctly AFTER the
+   mount cascade's own translateY has settled (patterns.js measured this:
+   capturing even one rAF frame early reads the first row mid-entrance-
+   transform, permanently mislocking the "resting" focus position a bit
+   below where Figma has it) — so patterns.js waits for the first row's
+   rise-in to finish, then corrects --focus once. Reusing .rise-in as the
+   selector rather than adding new JS-toggled state: while it's still
+   present the row hasn't settled yet, so THIS one write should ease in;
+   every OTHER write (continuous scroll tracking, after .rise-in is
+   stripped) must stay transition:none per the comment above, or it would
+   fight the rAF writes with a stale interpolation of its own. */
+.portal-group.rise-in { transition: height var(--dur-enter) var(--ease-out); }
+
+/* Fixed width always — this is the one deliberate divergence from the
+   PortalSwiping.mp4 reference, which scales width too. Lindsey's call: only
+   height should move here, so the column never narrows or reflows text
+   underneath it.
+   height is nominal LAYOUT space only (so the flex/block flow has
+   something to reserve below the title) — it is NOT what clips the cards.
+   Cards are absolutely positioned and can be, and are, taller than this
+   box; the actual crop boundary is .portal-group's own overflow:hidden at
+   whatever the ROW's live height currently is. That's deliberate: it's
+   what makes more of the front card reveal as the row grows, instead of
+   freezing the reveal at one fixed size.
+   Blends with --focus down to 0, NOT a flat 176px — found this the hard
+   way adding .portal-group's justify-content:center: a flat 176px meant
+   this box ALWAYS reserved that much flex-flow space, even fully
+   collapsed with the stack invisible, so centering was trying to center
+   an oversized (title + 176px) block inside the 100px collapsed row
+   instead of centering the title alone. At --focus:0 this is now 0, so
+   only the title participates in centering when collapsed. */
+.portal-stack {
+	position: relative;
+	width: 100%;
+	height: calc(var(--focus, 0) * 176px);
+}
+
+/* Rebuilt a second time 2026-08-16, this time against Figma node 201:6340's
+   actual rendered PIXELS (not the raw node tree, and not eyeballing) —
+   sampled the front card's fill color directly and it's an exact match for
+   this file's own --g-2 (226,226,226): these are meant to be real, full-
+   size cards, not shrunk miniatures. The front card is ~85.7% of the row's
+   own content width (measured 300 of 350px — same ballpark as the Swipe
+   deck's 88%), at the same 355:473 ratio as every other card in this file,
+   so aspect-ratio here does the height math instead of JS computing it.
+   It's simply TALLER than the row and gets cropped: measured ~124px of
+   visible height (title + avatar + byline; the body-paragraph lines never
+   show) out of a ~400px-tall card. The two cards behind are narrower at
+   the SAME ratio and each sits a measured ~16-18px higher than the one in
+   front — not because they're shorter, just because the front card's
+   opaque fill covers the rest of them. All three share one horizontal
+   centerline (confirmed to within 1px across all three Excerpt layers),
+   hence left:50% + translateX(-50%) rather than the Swipe deck's
+   corner-diagonal .deck-card offset. width/top are set per-card from JS
+   (portalStackHTML) since each of the 3 needs a distinct value; this rule
+   only carries what's shared. */
+.portal-stack-card {
+	position: absolute;
+	aspect-ratio: 355 / 473;
+	box-shadow: 0 4px 14px -3px rgba(0, 0, 0, .16);
+	opacity: clamp(0, (var(--focus, 0) - 0.4) / 0.6, 1);
+}
+
+/* The byline read as too close to the crop edge — Lindsey's report.
+   NOT fixed via row height or PORTAL_STACK_FRONT_TOP (both tried first,
+   both wrong): .card--excerpt uses justify-content:center internally, so
+   the card's own available height (aspect-ratio-derived from its width,
+   which is narrower here than the plain .card usage elsewhere) governs
+   where .card-quote (the rule + body-lines) lands — row height moves the
+   crop line, FRONT_TOP moves the whole card, but NEITHER changes the
+   internal distance between the byline and the quote section, which is
+   the actual gap that needed to grow. This margin does exactly that, and
+   verified empirically it improves BOTH sides of the earlier trade-off
+   simultaneously (more breathing room below the byline AND the rule
+   staying hidden by a wider margin) rather than trading one for the
+   other, which was the case with every lever tried before this one.
+   Scoped to .portal-stack-card, not .card-quote itself, so this doesn't
+   touch how the SAME card component renders in the other 4 patterns. */
+.portal-stack-card .card-quote {
+	margin-top: 20px;
+}
+
+/* ---------- Device frame (desktop only) ----------
+   Shadow only, no bezel: a hard black ring was the one high-contrast edge left
+   anywhere in this file, which is the same thing the hairline borders were doing
+   before they came out. The 44px radius now carries the whole "this is a phone"
+   read, so don't reduce it. Costs no extra DOM. Below 900px the prototype is
+   full-bleed and none of this applies. */
+
+@media (min-width: 900px) {
+	html, body { background: var(--field); }
+
+	#app {
+		padding: 32px 0 40px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: var(--s-6);
+	}
+
+	.device {
+		display: block;
+		position: relative;
+		width: var(--frame-w);
+		/* Capped at a real iPhone height, but shrinks so the switcher below is
+		   never pushed off a 900px laptop viewport. 150px covers this block's
+		   own padding + gap + pill height with slack. */
+		height: min(var(--frame-h), calc(100vh - 150px));
+		border-radius: var(--r-frame);
+		background: var(--g-0);
+		overflow: hidden; /* clips the scrim + home indicator to the radius;
+		                     box-shadow paints outside the box regardless */
+		/* Three layers, not one big blur: a single wide shadow leaves the edge
+		   undefined the whole way round and reads as a smudge rather than an
+		   object resting above a surface. */
+		box-shadow: 0 1px 2px rgba(0, 0, 0, .04),        /* contact edge */
+		            0 8px 24px -8px rgba(0, 0, 0, .10),  /* mid lift */
+		            0 32px 64px -24px rgba(0, 0, 0, .20); /* broad ambient */
+	}
+
+	/* Home indicator (Ref 3), on a scrim. Both live on .device so the scrolling
+	   shell can't carry them out of view — and without the scrim the pill lands
+	   on top of whatever text happens to be there and reads as a strikethrough. */
+	.device::before,
+	.device::after {
+		content: '';
+		display: block;
+		position: absolute;
+		left: 0;
+		right: 0;
+		z-index: 30;
+		pointer-events: none;
+	}
+
+	.device::before {
+		bottom: 0;
+		height: 44px;
+		background: linear-gradient(rgba(255, 255, 255, 0), var(--g-0) 70%);
+	}
+
+	.device::after {
+		bottom: 9px;
+		left: 50%;
+		right: auto;
+		transform: translateX(-50%);
+		width: 120px;
+		height: 5px;
+		border-radius: var(--r-pill);
+		background: var(--ink);
+		opacity: .22;
+	}
+
+	.app-shell {
+		width: 100%;
+		height: 100%;
+		min-height: 0;
+		max-width: none;
+		margin: 0;
+		border-radius: var(--r-frame);
+		overflow-y: auto;
+		overflow-x: hidden;
+		scrollbar-width: none;
+	}
+
+	.app-shell::-webkit-scrollbar { display: none; }
+
+	/* Clears the home indicator's scrim. */
+	.pattern-main { padding-bottom: 56px; }
+
+	/* The switcher lifts out of the phone and onto the field: it's harness
+	   chrome, not product chrome, and out here it can't be mistaken for app
+	   navigation. There's room for all 5 pills, so no scroll and no mask. */
+	.switcher {
+		position: static;
+		transform: none;
+		max-width: none;
+		width: auto;
+		background: none;
+		padding: 0;
+	}
+
+	.switcher::before { display: none; }
+
+	/* The track goes WHITE out here, and the active segment goes dark. On the
+	   grey field, white reads as "object" and grey as "ground" — that's already
+	   how the phone frame itself works, so a grey track would dissolve into the
+	   field (--g-1 #f1f1f1 against --field #e6e6e6 is 11/255 apart, exactly the
+	   indistinguishable-greys problem M3 removed). The rule holding both
+	   breakpoints together is "the active segment takes the far end of the ramp
+	   from its own track", not a fixed colour.
+
+	   nowrap, not wrap: there's room for all five out here, and a wrapped track
+	   would break into two stacked lozenges. */
+	.switcher-scroll {
+		background: var(--g-0);
+		overflow: visible;
+	}
+
+	.switcher-inner {
+		flex-wrap: nowrap;
+		justify-content: center;
+	}
+
+	/* Track went white out here, so the indicator takes the dark end of the ramp
+	   and the active label flips to white with it. */
+	.switcher-thumb { background: var(--ink); }
+	.switcher-btn.active { color: var(--g-0); }
+	.switcher-btn:not(.active):active { background: var(--g-1); }
+}
+
+/* ---------- Reduced motion ----------
+   Fewer and gentler, not zero. Keep the fades — knowing that content just
+   arrived aids comprehension, and opacity doesn't trigger motion sickness.
+   Drop everything that MOVES: the rise, the stagger, the panel height, the
+   chevron rotate, the press scale. */
+
+@keyframes fade-in {
+	from { opacity: 0; }
+	to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.menu-item:active,
+	.acc-header:active,
+	.tab:active,
+	.switcher-btn:active,
+	.back-link:active { transform: none; }
+
+	.deck-card { transition: opacity .2s ease; }
+
+	/* Same class, movement-free keyframe, no stagger. */
+	.rise-in,
+	.swap-in {
+		animation-name: fade-in;
+		animation-duration: var(--dur-press);
+		animation-delay: 0ms;
+	}
+
+	.acc-body-outer,
+	.acc-body,
+	.acc-item.open .acc-body,
+	.acc-header .chevron { transition: none; }
+
+	/* The indicator jumps to the new segment instead of travelling. It still
+	   changes position, so the "you are here" information survives — only the
+	   movement is removed. */
+	.switcher-thumb.ready { transition: none; }
+}
