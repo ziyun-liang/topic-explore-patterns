@@ -792,7 +792,10 @@ promote into a milestone once there's enough shape to act on.
     safety net.
   - **Bar weights come from the Figma, not `.ph-bar`** — 25px headline / 16px line,
     versus `.ph-bar`'s 9px, which was sized for a ~170px thumbnail and reads as dust
-    in a card this size. `.ph-bar` is untouched because Portal still uses it.
+    in a card this size. `.ph-bar` was left untouched at the time because Portal
+    still emitted it. (No longer true as of the 2026-08-16 static Portal rebuild —
+    the whole `.ph-*` family is now orphaned; see the cleanup note in Current
+    state. Doesn't change this decision, which was about bar weight.)
   - **Order is a TABLE, not `Math.random()`.** Lindsey asked for randomised order;
     real randomness would break the convention `BAR_WIDTHS` already documents, make
     every screenshot unstable, and — worse in a comparison harness — leave a reviewer

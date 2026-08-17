@@ -199,9 +199,17 @@
 		return '<div class="cards-row">' + cards + '</div>';
 	}
 
-	// Filled card skeleton — swipe deck / portal strip, where a card reads as a
-	// physical object rather than a thumbnail. Two bars instead of three: these
-	// cards are taller and narrower, and a third bar crowds them.
+	// Filled card skeleton — a card that reads as a physical object rather than
+	// a thumbnail. Two bars instead of three: these cards are taller and
+	// narrower, and a third bar crowds them.
+	//
+	// DEAD as of 2026-08-16 — nothing calls this. Its only caller was the old
+	// scroll-snap Portal strip, which the static Portal rebuild removed. (The
+	// swipe deck was never a consumer despite what this comment used to claim:
+	// it builds `.deck-card` around cardHTML(), not this.) imgWellHTML below is
+	// transitively dead with it, as are the .ph-card / .ph-img / .ph-bar rules
+	// in styles.css. Delete all of it together, with a re-render check across
+	// the five routes afterwards — see CLAUDE.md's cleanup note.
 	function phCardInnerHTML(variant) {
 		var w = BAR_WIDTHS[variant % BAR_WIDTHS.length];
 		return (

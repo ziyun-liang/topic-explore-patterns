@@ -587,8 +587,11 @@ svg { display: block; }
 }
 
 /* Bars are 16px/25px, not .ph-bar's 9px. Deliberate: .ph-bar was sized for a
-   ~170px thumbnail and reads as dust inside a card this size. .ph-bar is left
-   untouched because Portal still uses it. */
+   ~170px thumbnail and reads as dust inside a card this size. (.ph-bar was
+   left untouched at the time because Portal still emitted it. Not true in
+   this fork either: its Portal stack renders REAL .card/.card-bar cards, so
+   .ph-* is unreachable here too — verified 0 .ph-bar in the live DOM against
+   15 .portal-stack-card. Left in place as inert fork content by convention.) */
 .card-bar {
 	height: 16px;
 	border-radius: var(--r-pill);
@@ -920,7 +923,7 @@ svg { display: block; }
    depth-stacked preview of its 3 content cards, while every other question
    collapses to a plain one-line row. Which one is focused tracks scroll
    position CONTINUOUSLY (not a snap-then-animate paged transition) — driven
-   by patterns.js's portalFocusTick(), which writes a --focus (0–1) custom
+   by patterns.js's portalTick(), which writes a --focus (0–1) custom
    property per group every scroll frame. This file only defines what --focus
    MEANS visually; it never sets it.
 
