@@ -24,12 +24,20 @@ design (this phase isn't testing content, it's testing navigation shape) —
 only question copy is real, because question length/wording is exactly what
 each pattern's tabs/rows/labels need to be stress-tested against.
 
-Counts per pattern are fixed to match the Figma sketch (Carousel 3, Tabs 4,
-Accordion 5, Card Swipe 3, Portal 4) and are wired as plain arrays, so
-changing a count is editing `content.js`'s array length for that pattern —
-`patterns.js` doesn't hardcode counts of directions anywhere, only cards-per-
-direction (`CARD_COUNTS` at the top of the file), which come from the Figma
-metadata rather than the text content.
+Counts per pattern come from the Figma sketch — Carousel 3, Tabs 4,
+Accordion 5, Card Swipe 3, Portal 5 — and are wired as plain arrays, so
+changing a count is editing `content.js`'s array length for that pattern;
+`patterns.js` doesn't hardcode counts of directions anywhere. Portal is the
+one deliberate departure from the sketch: it grew from 4 to 5 on 2026-08-16
+(reusing Accordion's 5th question verbatim), recorded in `content.js`'s
+header comment.
+
+Cards *per* direction aren't a constant either. Patterns 1–4 each show one
+card of every content kind — three per question, one visible at a time in a
+snap-scrolling row — so the count is implied by the `CARD_ORDERS` table
+rather than declared. (A `CARD_COUNTS` constant used to exist for Portal's
+old card strip; the static Portal rebuild removed both, so don't go looking
+for it.)
 
 ## Navigation
 

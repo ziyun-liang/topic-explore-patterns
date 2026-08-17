@@ -34,7 +34,7 @@
 	--field: #e6e6e6; /* desktop backdrop behind the device frame */
 
 	/* Radius — one family, nested (inner ≈ outer − padding) */
-	--r-lg: 20px;     /* tappable blocks, cards, deck, portal window */
+	--r-lg: 20px;     /* tappable blocks, cards, deck, portal rows */
 	--r-md: 12px;     /* placeholder image well inside a card */
 	--r-pill: 999px;  /* bars, tabs, switcher pills, arrow circles */
 	--r-frame: 44px;
@@ -77,6 +77,7 @@
 	--dur-slide: 240ms;  /* switcher indicator travelling between segments */
 	--stagger: 40ms;
 	--rise: 8px;
+
 }
 
 * { box-sizing: border-box; }
@@ -509,7 +510,9 @@ svg { display: block; }
 
 /* ---------- Card row ----------
    Was a static 2-up row of flat thumbnails; now a horizontal scroller carrying
-   one card of each content kind. Same recipe as .portal-strip.
+   one card of each content kind. (It once shared its recipe with a
+   `.portal-strip` rule; Portal has been rebuilt twice since and no longer has
+   a horizontal strip at all, so this is now the only place the recipe lives.)
 
    The negative margin lets the row bleed to its container's edge while the
    matching padding holds the first card at the gutter — so cards scroll off the
@@ -575,8 +578,10 @@ svg { display: block; }
 }
 
 /* Bars are 16px/25px, not .ph-bar's 9px. Deliberate: .ph-bar was sized for a
-   ~170px thumbnail and reads as dust inside a card this size. .ph-bar is left
-   untouched because Portal still uses it. */
+   ~170px thumbnail and reads as dust inside a card this size. (.ph-bar was
+   left untouched at the time because Portal still emitted it. As of
+   2026-08-16 it no longer does and the whole .ph-* family is orphaned — see
+   the note on .ph-card below. This rule is unaffected either way.) */
 .card-bar {
 	height: 16px;
 	border-radius: var(--r-pill);
@@ -703,8 +708,16 @@ svg { display: block; }
 	margin-top: 2px;
 }
 
-/* Filled card skeleton — used where a card reads as a physical object (swipe
-   deck, portal strip) rather than a flat thumbnail. */
+/* Filled card skeleton — a card that reads as a physical object rather than a
+   flat thumbnail.
+   ORPHANED as of 2026-08-16, kept deliberately for one more session: its only
+   emitter was `phCardInnerHTML`, whose only caller was the old scroll-snap
+   Portal strip. Verified zero `.ph-card` / `.ph-bar` / `.ph-img` elements in
+   the live DOM on all five routes. (The swipe deck does NOT use this — it has
+   its own `.deck-card`.) So this rule, `.ph-card .ph-img`, the `.ph-bar*`
+   rules above, and `phCardInnerHTML` / `imgWellHTML` in patterns.js are all
+   dead together and should be removed as one cleanup, with a re-render check
+   after — not piecemeal. See CLAUDE.md's cleanup note. */
 .ph-card {
 	display: flex;
 	flex-direction: column;
@@ -902,40 +915,162 @@ svg { display: block; }
 	margin: 0;
 }
 
-/* ---------- Portal (#/portal) ---------- */
+/* ---------- Portal (#/portal) ----------
+   REBUILT 2026-08-16 against Figma 206:9177. The previous Portal was
+   scroll-driven (one row focused at a time, height interpolated from scroll
+   position through a flat "plateau" rest zone, plus a bottom scroll spacer).
+   All of that is GONE from this file — deliberately, not by accident — and
+   lives on in `portal-scroll/styles.css` as a fork, so it can keep being
+   refined outside this 5-pattern comparison harness. Don't reintroduce
+   `--focus`, `--portal-plateau`, `.portal-stack*` or `.portal-scroll-spacer`
+   here; see CLAUDE.md.
 
-.portal-group { padding: 0 var(--gutter); }
-.portal-group + .portal-group { margin-top: var(--group-gap); }
-
-.portal-window {
-	width: 100%;
-	height: 190px;
-	overflow: hidden;
+   What's left is the simplest pattern in this file: five identical static
+   rows, nothing animated beyond the shared mount cascade, no JS state.
+   Numbers are from 206:9177's node data (not eyeballed from a screenshot),
+   with the two places this build deliberately DEPARTS from it called out —
+   both were Lindsey's explicit corrections after the first draft, so don't
+   quietly "restore" the Figma value:
+     row  390 x 144, 21px apart          -> fixed 144px height, --s-5 gap
+     text inset 30 left / 25.4 right     -> --s-6 (24), NOT --s-7 (32). At our
+                                            350px row (the Figma frame is 390
+                                            with no outer gutter) the extra
+                                            8px per side pushes questions to
+                                            an unnecessary third line.
+     question type                       -> the SHARED .q-title (19px), NOT a
+                                            smaller Portal-specific size. An
+                                            earlier draft used its own 15px
+                                            .portal-q class on the reasoning
+                                            that .q-title is shared; Lindsey
+                                            overruled it — in a head-to-head
+                                            comparison harness, type size must
+                                            not be a variable between the five
+                                            patterns. .portal-q is gone; see
+                                            the .portal-group .q-title rule
+                                            below for how it's overridden
+                                            without touching type at all.
+     front square 80 x 80, upright
+     back  square 80 x 80 ROTATED ~7deg, behind and up-right of the front one.
+                                            The node reports an 89.0038 square
+                                            because that is the axis-aligned
+                                            BOUNDING BOX of the rotation, not
+                                            a bigger square — see the
+                                            .portal-thumb-back rule.
+   Row height is fixed rather than content-driven on purpose: all five rows in
+   the Figma are 144 even though the questions wrap to two OR three lines, so
+   a taller question must not make its row taller. At 19px/--s-6 the current
+   copy wraps 2/2/3/3/2 lines, matching the Figma's own measured text-block
+   heights (42/42/63/63/42) exactly, and 3 lines still fit 144 with room. */
+/* margin-inline is the OUTER gutter (the row inset from the screen edge);
+   padding-inline is the INNER one (content inset from the row's own edge).
+   Both are needed and they are not interchangeable — .pattern-main has no
+   horizontal padding of its own, so without the margin the grey rows go
+   full-bleed and touch the viewport edges. That exact bug shipped once
+   already in the previous Portal and was caught by eye, not by code review;
+   re-verified here by measuring row width (350, not 390) and left offset
+   (20, not 0) at a 390px viewport. */
+.portal-group {
+	display: flex;
+	align-items: center;
+	gap: var(--s-5);
+	height: 144px;
+	margin-inline: var(--gutter);
+	/* --s-6 (24), not --s-7 (32): the Figma's own insets are 30 left and 25.4
+	   right, so 24 is the closer token on both sides — and at our 350px row
+	   (vs the Figma frame's 390px) the extra 8px per side is what keeps a
+	   question like "How are young people feeling about A.I.?" from wrapping
+	   to a third line unnecessarily. Three-line wrapping is still fine when
+	   it happens: the row is a fixed 144px and 3 x 21px lines fit with room,
+	   which is exactly what the Figma's own 3-line row does. */
+	padding-inline: var(--s-6);
+	background: var(--g-1);
 	border-radius: var(--r-lg);
 }
 
-.portal-strip {
-	display: flex;
-	gap: var(--s-3);
-	height: 100%;
-	overflow-x: auto;
-	scroll-snap-type: x mandatory;
-	scrollbar-width: none;
+.portal-group + .portal-group { margin-top: var(--s-5); }
+
+/* Portal's question text is the SHARED .q-title — same size, weight, tracking
+   and line-height as the question in all four other patterns. This rule only
+   handles being a flex child; it deliberately sets NO type properties, so the
+   type genuinely cannot drift from the other patterns (that's the point, per
+   the low-fi craft system: in a comparison harness, type size must not be a
+   variable). Only two things to override:
+     · margin — the shared rule carries `0 0 var(--s-4)` for stacked layouts;
+       here the row is a vertically-centred flex line, so any bottom margin
+       would push the text visibly off-centre.
+     · min-width:0 — without it a flex item refuses to shrink below its
+       longest word and the text overflows the row instead of wrapping.
+   Left-aligned, matching 206:9177 (the previous scroll-driven Portal centred
+   its questions; this one does not). */
+.portal-group .q-title {
+	flex: 1 1 auto;
+	min-width: 0;
+	margin: 0;
 }
 
-.portal-strip::-webkit-scrollbar { display: none; }
-
-.portal-card {
-	flex: 0 0 70%;
-	scroll-snap-align: start;
+/* The two-square stack that now carries the "portal" idea: a hint that there
+   is a stack of content behind this question. Deliberately NOT a miniaturised
+   real content card — that was tried in the previous version and read as a
+   strange shrunken artefact rather than a card.
+   Sized to the union of both squares' actual painted bounds so the row's flex
+   layout reserves exactly the right space and neither absolute child spills:
+     · front is flush top-left-ish at (0,20), flush bottom at 20+80 = 100 —
+       which is exactly this container's height, by design (see below).
+     · back is the same 80x80 square rotated 7deg about its own centre from an
+       unrotated position of (25,5); its rotated bounding box grows +/-4.575px
+       per side, landing at x:[20.4, 109.6], y:[0.4, 89.6] — 0.4px shy of every
+       container edge (110 wide, 100 tall) and touching none of them. */
+.portal-thumb {
+	position: relative;
+	flex: 0 0 auto;
+	width: 110px;
+	height: 100px;
 }
 
-/* Trailing runway so the last card can snap without a hard right-edge stop.
-   This has to be a MARGIN on the last card, not `padding-right` on the strip:
-   padding shrinks the flex container's content box, which is what `flex: 0 0
-   70%` resolves against — so 70% was silently computing as ~49% of the window
-   and the "portal" peek collapsed into a cropped 2-up. Margins don't. */
-.portal-card:last-child { margin-right: 30%; }
+.portal-thumb-back,
+.portal-thumb-front {
+	position: absolute;
+	border-radius: var(--r-md);
+}
+
+/* Behind, and ROTATED — the two squares are the SAME 80x80 size; the back one
+   is simply tilted. Getting this right needed measurement, because Figma
+   reports a rotated node's AXIS-ALIGNED BOUNDING BOX, which read as
+   "89.0038 x 89.0038" and looked like a bigger square. It isn't:
+   80 x (cos7deg + sin7deg) = 89.0, i.e. an 80px square tilted 7 degrees has
+   exactly that bounding box. Confirmed independently from the rendered pixels
+   by least-squares fitting the middle of the top edge (6.77deg, 47 samples)
+   and the right edge (7.00deg, 55 samples) — the middles only, because the
+   corner radius pulls the extreme points inward and biases a naive
+   corner-to-corner angle to ~11deg.
+   Positive rotate() = clockwise, matching the reference (top edge descends to
+   the right).
+   Offsets are the UNROTATED box position; rotation happens about the centre,
+   so the tilted bounding box grows symmetrically (+/-4.5px) and stays inside
+   this 110x100 container.
+   --g-4 rather than the reference's literal #cecece: that value isn't on this
+   file's four-grey ramp, and --g-4 is the ramp's existing next step down from
+   the front square's --g-2, which keeps the ladder intact (see the ramp note
+   at the top of this file). */
+.portal-thumb-back {
+	top: 5px;
+	left: 25px;
+	width: 80px;
+	height: 80px;
+	background: var(--g-4);
+	transform: rotate(7deg);
+}
+
+/* In front, bottom-left of the pair. --g-2 is the content-card surface colour,
+   matching the Figma exactly. */
+.portal-thumb-front {
+	top: 20px;
+	left: 0;
+	width: 80px;
+	height: 80px;
+	background: var(--g-2);
+}
+
 
 /* ---------- Device frame (desktop only) ----------
    Shadow only, no bezel: a hard black ring was the one high-contrast edge left

@@ -19,11 +19,14 @@
 		{ id: 'portal', label: 'Portal' }
 	];
 
-	// Only `portal` reads this now. Patterns 1–4 render one card of each content
-	// kind, so their count is inherently 3 and is defined by CARD_ORDERS below.
-	// Kept rather than deleted because it's the documented Figma-sourced figure
-	// (qMKFOJCaalehqHh2j8CUCF, node 196:13252).
-	var CARD_COUNTS = { portal: 3 };
+	// CARD_COUNTS is GONE as of 2026-08-16. It existed to tell Portal how many
+	// cards to put in its stack, and Portal was its only remaining reader; the
+	// static Portal (Figma 206:9177) draws two plain decorative squares
+	// instead, so nothing consumes a per-pattern card count any more. Patterns
+	// 1–4 render one card of each content kind, so their count is inherently 3
+	// and comes from CARD_ORDERS below. The documented Figma-sourced counts
+	// live in content.js's header comment, which is where they belong.
+	// (portal-scroll/, the forked scroll-driven Portal, still has its own copy.)
 
 	// The three content-card kinds (Figma node 199:4522) and the order each
 	// question presents them in.
@@ -487,25 +490,55 @@
 		});
 	}
 
-	// ---------- Portal: windowed peek, native horizontal scroll-snap ----------
-
+	// ---------- Portal: static list, question + card-stack affordance ----------
+	//
+	// REBUILT 2026-08-16 against Figma 206:9177, replacing a scroll-driven
+	// version (vertical list, one row focused at a time, size driven
+	// continuously by scroll through a flat "plateau" rest zone). That version
+	// is NOT deleted — it lives on in `portal-scroll/` as a deliberate fork so
+	// it can keep being refined outside this 5-pattern comparison file. See
+	// CLAUDE.md; do not try to reconstruct it from git history.
+	//
+	// Lindsey's call, and the reasoning matters: the scroll-driven version was
+	// hard to land, so Portal's entry point here becomes deliberately EASIER —
+	// a plain static list where every row is identical and nothing moves. The
+	// interesting work moves to what happens when you TAP a row (expanding into
+	// the full vertical content feed, Figma 199:4068), which is its own later
+	// milestone. So this renderer is intentionally the simplest of the five:
+	// no rAF loop, no scroll listener, no measurement, no state at all.
+	//
+	// Every row is the same 144px tall regardless of whether its question wraps
+	// to two or three lines (measured across all five rows in 206:9177 — all
+	// 144). The card-stack thumbnail on the right is what carries the "portal"
+	// idea now: two plain rounded squares, hinting there is a stack of content
+	// behind this question, without miniaturising a real card (a shrunk real
+	// card was tried in the previous version and read as strange).
 	function renderPortal(main, directions) {
 		main.innerHTML = directions
 			.map(function (d) {
-				var cards = '';
-				for (var i = 0; i < CARD_COUNTS.portal; i++) {
-					cards += '<div class="portal-card ph-card">' +
-						phCardInnerHTML(i) + '</div>';
-				}
 				return (
 					'<div class="portal-group cascade-item">' +
+					// .q-title, the SHARED question style every other pattern
+					// uses — not a Portal-specific class. Lindsey's explicit
+					// correction: Portal's questions must be the same
+					// typographic size/style as Carousel/Tabs/Accordion/Swipe,
+					// because in a head-to-head comparison harness a different
+					// type size is a variable that shouldn't be varying. An
+					// earlier version of this row used its own smaller 15px
+					// class; don't reintroduce that.
 					'<p class="q-title">' + escapeHTML(d.question) + '</p>' +
-					'<div class="portal-window"><div class="portal-strip">' + cards + '</div></div>' +
+					// Decorative only — the question text is the accessible name of
+					// the row, and announcing two empty boxes would add nothing.
+					'<span class="portal-thumb" aria-hidden="true">' +
+					'<span class="portal-thumb-back"></span>' +
+					'<span class="portal-thumb-front"></span>' +
+					'</span>' +
 					'</div>'
 				);
 			})
 			.join('');
 	}
+
 
 	var RENDERERS = {
 		carousel: renderCarousel,
@@ -696,6 +729,11 @@
 	function render() {
 		var app = document.getElementById('app');
 		var hash = location.hash.replace(/^#\/?/, '');
+
+		// (No per-pattern teardown needed here. Portal used to own a rAF loop
+		// that had to be stopped on every route change; the static Portal has
+		// no loop, no listeners and no state, so there is nothing to clean up.
+		// The scroll-driven version that did need it lives in portal-scroll/.)
 
 		// .device is a passthrough at phone width and becomes the frame on
 		// desktop; it also owns the home indicator, which must not scroll with

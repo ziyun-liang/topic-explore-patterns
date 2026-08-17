@@ -36,7 +36,46 @@ that.
 - **Content cards come in three styles** — summary, video, excerpt — one 88%-wide
   card per view in a horizontally snap-scrolling row, on patterns 1–4. Order
   varies per question from a fixed `CARD_ORDERS` table (not `Math.random()`, so
-  screenshots stay comparable). Portal keeps its own smaller card treatment.
+  screenshots stay comparable). Master Portal renders none of these — just a
+  two-square thumbnail affordance (see below); `portal-scroll/`'s fork still
+  crops real cards into its depth stack.
+- **Portal rebuilt again 2026-08-16, later the same day** — the scroll-driven
+  focus-resize mechanism (described in full under `portal-scroll/` below) was
+  extracted out to preserve it, and master's `#/portal` was replaced with a
+  much simpler **fully static list** (Figma 206:9177). Lindsey's call: the
+  scroll-driven version was hard to land and worth continuing separately,
+  but the master 5-pattern comparison file needed an easy, working entry
+  point now, with the tap→expand vertical feed (Figma 199:4068) explicitly
+  left for "later stage" once a card is tapped.
+  Each row (`.portal-group`) is a fixed 144px grey box: the question on the
+  left using the exact SHARED `.q-title` rule every other pattern uses (19px
+  /500/-0.01em) — **not** a Portal-specific size, confirmed by direct
+  comparison against Carousel's own `.q-title` computed style after an
+  earlier draft mistakenly shipped a smaller custom class — and a
+  `.portal-thumb` affordance on the right: two same-size 80×80 squares
+  hinting at a card stack behind the question, deliberately NOT a
+  miniaturized real content card (that was tried in the scroll-driven
+  version and read as a strange shrunken artefact, see below). The back
+  square is the front's own colour one step down the grey ramp (`--g-4` vs
+  `--g-2`) and rotated **7deg clockwise** — worth remembering if this ever
+  needs re-measuring from Figma: the node reported an axis-aligned bounding
+  box of "89.0038 × 89.0038," which looks like a bigger square but isn't —
+  it's the rotated bbox of an 80×80 square (`80×(cos7°+sin7°) ≈ 89.15`),
+  confirmed independently by least-squares fitting the *middle* of two
+  rendered edges (not corner-to-corner, which the rounded corners bias
+  toward a falsely steep ~11°). `.portal-thumb`'s 110×100 container is sized
+  to the tight union of both squares' actual bounds, not a round number —
+  see the comment above `.portal-thumb` in `styles.css` if this needs
+  touching again.
+  Outer gutter matches the shared `--gutter` token via `margin-inline` on
+  `.portal-group` — this exact bug (rows going full-bleed, touching the
+  viewport edges with zero left/right padding) has now shipped and been
+  caught by eye TWICE across the two Portal builds; check for it explicitly
+  any time `.portal-group`'s box model changes.
+  Portal still has **5 questions** (unchanged from the scroll-driven build —
+  reuses Accordion's exact 5th question, see `content.js`'s header comment).
+  **Tap does nothing yet on any row** — deliberately deferred, same as
+  before.
 - **The card rows have velocity lag.** Each card trails the one before it by
   ~17ms of travel, so a swipe stretches the row and closes it again instead of
   moving as one plane. The constant is *derived* from
@@ -55,11 +94,146 @@ that.
 - Zero build step, zero dependencies. Plain `index.html` / `styles.css` /
   `content.js` / `patterns.js`. Hash routing (`#/carousel` etc.), pinned
   bottom switcher.
+- **`portal-scroll/` is a deliberate FORK, not a duplicate — don't "clean it
+  up" by merging it back.** Created 2026-08-16 to preserve the scroll-driven
+  Portal (vertical list, one question focused at a time, size driven
+  continuously by scroll with a plateau rest zone) so it can keep being
+  refined *outside* the master 5-pattern comparison file. Lindsey's call: the
+  scroll-driven version is hard to land, so the master `index.html` moves to a
+  simpler Portal entry point (Figma 206:9177) while the harder version lives
+  on here.
+  The four files were copied **byte-identical** first, then only three things
+  were changed in the fork (all in `render`/`renderPatternView`): always
+  render Portal regardless of hash, drop the back-link, don't call
+  `syncSwitcher`. **Refining Portal in that folder must never require editing
+  the master copy** — that separation is the entire point. Reachable at
+  `/portal-scroll/` (its own `index.html`); the other four renderers and the
+  switcher code are left inert in the fork on purpose, to keep the fork
+  readable as a variant of the same file rather than a rewrite.
+
+  **Don't expect `diff patterns.js portal-scroll/patterns.js` to be small any
+  more.** It was three hunks at the moment of forking, but master was then
+  rebuilt to the static Portal in the same session, so the two files now
+  differ by ~430 lines (styles.css ~351; content.js is still identical). The
+  fork is the OLDER, richer Portal and master is the newer, simpler one — so
+  read that diff as "two different Portals," not as "the fork's local
+  changes." If you need the fork's own history, the three render changes above
+  are the only edits ever made to it by hand.
+
+  **What's preserved here, condensed** (full derivations were in this file's
+  history before the extraction, if any of this ever needs re-deriving from
+  scratch):
+  - One question "focused" at a time (depth-stacked preview of its 3 real
+    content cards), everyone else a plain collapsed row; which one is
+    focused tracks scroll position CONTINUOUSLY via the same scroll+rAF
+    idiom as the card-row velocity lag. Height only changes, width is fixed
+    — a deliberate departure from `PortalSwiping.mp4`, which scales both.
+  - The card stack is centered (not corner-diagonal) and the front card is a
+    REAL full-size card (~86% of row width, matching `--g-2` exactly) that
+    gets CROPPED by the row's own height, not scaled down — growing the row
+    reveals more of the SAME card, it does not shrink a miniature.
+    Expanded row height is **292px**, arrived at via two additive
+    corrections (avatar clearance, then title top padding) — re-derive from
+    those two corrections, not from a fresh guess, if it drifts again.
+  - Question text is centered both axes, which needed `--focus`-blending
+    `.portal-stack`'s height AND `.q-title`'s margin-bottom to 0 at
+    `--focus:0` — anything with a fixed height/margin that doesn't blend
+    with `--focus` becomes an invisible source of centering drift as the
+    row resizes.
+  - The scroll→size mapping has a **plateau** (flat rest zone) so cards
+    visibly "lock in place" instead of resizing on every pixel of scroll:
+    `t = |row.top - focusLine| / PORTAL_FALLOFF; focus =
+    clamp01((1-t)/(1-plateau))`. **Plateau = 0.55**, chosen by Lindsey from
+    a 4-way live comparison (each card holds fully open for ~80–90px of
+    scroll at this value; 0.75 held longer but caused a 0→1 jump within
+    10px). Known accepted side effect: a ~15px scroll window where combined
+    stack opacity dips to ~0.32 mid-handoff — measured, shown to Lindsey,
+    left as-is.
+  - `.portal-scroll-spacer` (500px, after the last row) deliberately
+    reserves extra scroll room — the natural document only gave ~65–110px,
+    nowhere near enough to sweep focus across all 5 questions. Don't "fix"
+    insufficient scroll room by retuning `PORTAL_FALLOFF` or row heights
+    instead.
+  - Two real bugs, both latent in the mechanism itself: (1) the focus line's
+    capture assumed scroll was at the top, corrupting it on remount at any
+    other scroll position — fixed by folding in `portalScrollTop()`; (2) the
+    last card closed again once scrolled past it — fixed by clamping
+    `t = 0` for the last row once `r.top <= focusY`.
+  - Never verified on a real phone.
+
+  **KNOWN BUG, measured and NOT yet fixed — the 500px spacer only works at
+  844px viewport height.** Found 2026-08-16 by an adversarial review of the
+  plateau work, then re-measured independently before recording it here (the
+  review's two agents disagreed about which devices were affected, and the
+  more pessimistic one was right). The last row's hold-open clamp is gated on
+  `r.top <= focusY`, which is only reachable if max scroll can carry that row
+  up to the focus line. On the **phone branch** (viewport < 900px wide, where
+  the window itself scrolls) `maxScroll = documentHeight - viewportHeight`, so
+  every extra CSS pixel of viewport height eats a pixel of scroll range — and
+  `.portal-scroll-spacer` is a flat 500px chosen at 390×844. Above roughly
+  948px of viewport height the reachable bottom lands mid-ramp, `--focus`
+  pins at 0 and the last question can NEVER open. The **desktop branch** is
+  immune, because `.device { height: min(844px, 100vh - 150px) }` caps the
+  scrollport — so extra viewport height can't eat scroll range there.
+  Measured peak `--focus` per row over a full real-wheel scroll:
+
+  | viewport | branch | per-row peak focus | verdict |
+  |---|---|---|---|
+  | 390×844 (primary target) | phone | 1 · 1 · 1 · 1 · 1 | ok |
+  | 440×944 | phone | 1 · 1 · 1 · 1 · **0.18** | seam |
+  | 440×956 (iPhone 16 Pro Max) | phone | 1 · 1 · 1 · 1 · **0** | broken |
+  | 390×1000 | phone | 1 · 1 · 1 · 1 · **0** | broken |
+  | 768×1024 (iPad mini) | phone | 1 · 1 · 1 · **0.84** · **0** | broken |
+  | 810×1080 (iPad 10.2) | phone | 1 · 1 · 1 · **0.01** · **0** | broken |
+  | 899×1400 | phone | 1 · **0** · **0** · **0** · **0** | broken |
+  | 900×1100 (one px wider) | desktop | 1 · 1 · 1 · 1 · 1 | ok |
+
+  That 899 vs 900 pair is the proof: same content, one pixel of width, and
+  crossing into the framed desktop branch fixes it outright.
+  **The fix is a taller spacer — `1200px` was measured to make every row
+  reach 1.000 across all eight viewports above, including 899×1400.** 900px
+  fixes everything except 899×1400. Deliberately left UNAPPLIED so the push
+  stays scoped to the day's design work; it's a one-value change to
+  `.portal-scroll-spacer` in `portal-scroll/styles.css` whenever this fork is
+  picked back up. Do NOT instead retune `PORTAL_FALLOFF`, the plateau, or row
+  heights — the behaviour is monotonic in spacer height and nothing else here
+  is wrong.
+  The review also raised a second "major" finding — scroll juddering
+  backwards near the bottom — but verification established it's the SAME
+  root cause, not an independent bug: backward scroll frames occur if and
+  only if the reachable bottom lands mid-ramp, i.e. exactly when the last
+  row fails to reach 1. It was scrollTop re-clamping, not Chrome scroll
+  anchoring (disabling `overflow-anchor` changed nothing). Fixing the spacer
+  fixes both. 7 of the review's 9 findings were refuted on verification.
 - `content.js` is the one hand-edited data file — question copy per pattern, and
   the theme name. Question *counts* per pattern are fixed to match the source
-  Figma sketch (Carousel 3, Tabs 4, Accordion 5, Swipe 3, Portal 4); read its
-  header comment before editing. `patterns.js`'s `CARD_COUNTS` is now
-  **Portal-only** — patterns 1–4 render one card per question.
+  Figma sketch, with one deliberate exception: Carousel 3, Tabs 4, Accordion 5,
+  Swipe 3, **Portal 5** (reuses Accordion's 5th question — see `content.js`'s
+  header comment). `patterns.js` no longer has a `CARD_COUNTS` constant —
+  removed along with the rest of the scroll-driven Portal renderer when master
+  moved to the static list above. Patterns 1–4 each render **three** cards per
+  question (one of each content kind, one visible at a time in the
+  snap-scrolling row), so their count is implied by `CARD_ORDERS` rather than
+  declared anywhere; master Portal renders none at all (just the two-square
+  thumbnail affordance).
+- **One cleanup owed, deliberately deferred: a dead `ph-*` card-skeleton
+  cluster.** Surfaced 2026-08-16 by a pre-push review and confirmed by
+  measurement, not by reading: `.ph-card`, `.ph-card .ph-img` and the
+  `.ph-bar*` rules in `styles.css`, plus `phCardInnerHTML` and `imgWellHTML`
+  in `patterns.js`, are now ALL dead in master. The chain: `imgWellHTML` is
+  called only by `phCardInnerHTML`, which was called only by the old
+  scroll-snap Portal strip, which today's static rebuild removed. Verified by
+  counting elements in the live DOM on all five routes — `.ph-card`,
+  `.ph-bar` and `.ph-img` are each **0 on every route**, so nothing renders
+  from any of it. (`BAR_WIDTHS` is NOT dead — `cardHTML` still reads it. The
+  swipe deck is NOT affected — it has its own `.deck-card`.)
+  Left in place on purpose rather than swept into the same push as the design
+  work: it changes zero rendered pixels, so deleting it at wrap time would
+  have been a nonzero-risk change for no visible benefit. Remove it as ONE
+  commit with a re-render check across all five routes afterwards, not
+  piecemeal — the CSS and the two JS functions are only safe to delete
+  together. The `.ph-card` rule carries a matching comment marking it
+  orphaned so nobody reads it as live in the meantime.
 - This repo (`ziyun-liang/topic-explore-patterns`, public) is the source of
   truth while iterating. Fold-in path to napp-100's `understand-intents`
   prototype is fully scoped in `README.md`'s "Path to hi-fi" section — not
@@ -306,6 +480,27 @@ promote into a milestone once there's enough shape to act on.
   *after* feeling the cascade on a phone. Don't fold it into another milestone
   silently — it needs its own scope and its own opinion about what the fake
   delay is teaching us.
+- **Portal tap-to-expand-into-feed.** Deferred on purpose, explicitly
+  described by Lindsey as "later stage" work (see Current State) — tapping
+  a row's thumbnail should expand into a full vertical feed of real-size
+  content cards (Figma 199:4068), matching what patterns 1–4 currently just
+  scroll to inline. Needs its own design pass: a Flip-style card→full-screen
+  transition (GSAP's `Flip` is the standing candidate per M4, still
+  unexamined), and — now that master Portal is a static list rather than one
+  focused row — a decision on whether every row expands the same way or
+  only some do. Don't add tap behavior to Portal piecemeal without this —
+  the two pieces need to feel like one gesture. Applies to master's static
+  list; `portal-scroll/`'s fork has its own separate version of this same
+  deferred item, scoped to its focused-row mechanism instead.
+- ~~**Portal's scroll headroom is thin at real phone height.**~~ Resolved,
+  but only inside `portal-scroll/` — master's static-list Portal has no
+  scroll mechanism at all, so this no longer applies there. The fork's fix
+  ended up being BOTH of the two options this note originally proposed, not
+  either/or: a 5th question was added (content.js's documented exception to
+  the per-pattern count convention) AND a deliberate `.portal-scroll-spacer`
+  was added after it — the extra question alone still wasn't enough scroll
+  distance to reach every card's focus peak. See `portal-scroll/`'s bullet
+  in Current State for the measured numbers.
 
 ## Session log
 
@@ -760,22 +955,82 @@ promote into a milestone once there's enough shape to act on.
     argument for taking over the gesture after all (which is where `Draggable`/
     `Inertia` would finally earn their place).
 
-- **Next session** — Lindsey wrapped 2026-08-16 with "I will start a new one to
-  fix more things", so **expect fixes to today's work first**, not the next
-  milestone. Everything below is deployed and verified in-browser but **none of
-  the eight changes made today has been felt on a phone** — read "Outstanding" in
-  Current state before assuming a feel complaint is a bug.
+- **2026-08-16 (ninth pass, next session) — Portal built twice, then split
+  into two files.** Started from Figma 199:5483/201:6178 plus reference video
+  `PortalSwiping.mp4`: rebuilt Portal from its original horizontal
+  scroll-snap strip into a vertical list with a scroll-driven focus resize
+  (one question focused with a 3-card depth stack, others collapsed,
+  continuous with real page scroll — Lindsey's explicit call over
+  scroll-jacking). That build went through several rounds of visual
+  correction against closer Figma frames (201:6336, 201:6340, 204:7942), then
+  a "tik tik tik" pause request that led to a plateau/rest-zone mapping
+  (0.55, chosen from a live 4-way comparison), then a scroll-room spacer so
+  all 5 questions were reachable on a real phone. Once that was working,
+  Lindsey decided the scroll-driven mechanism was hard to land for the
+  master comparison file and asked to **extract it before changing anything
+  else** — copied byte-identical to `portal-scroll/` first, verified, only
+  then was master's `#/portal` replaced with a much simpler fully static
+  list (Figma 206:9177). Two corrections followed against a screenshot
+  Lindsey attached: the static list's question text had drifted to its own
+  smaller custom class instead of the shared `.q-title` (fixed, confirmed
+  matching Carousel's computed style exactly), and the thumbnail's back
+  square was drawn as a plain larger upright square instead of a same-size
+  square rotated ~7° (fixed, confirmed against least-squares-fit Figma edge
+  angles). Full detail on both builds lives in Current State above — the
+  static list under "Portal rebuilt again," the scroll-driven mechanism
+  under `portal-scroll/`. **None of it has been felt on a real phone.**
 
   Read first if a fix touches these, because each hides a trap that already cost
   time once: the switcher (persistent DOM — never reintroduce
   `app.innerHTML = ''`; use `getBoundingClientRect()`, not `offsetLeft`, for the
   thumb); the accordion (padding on a collapsing grid item can't collapse);
   `.cards-row` (`scroll-padding-inline` is what makes the gutter survive
-  scroll-snap; direct `scrollLeft` is invalid for testing it); and any cascade
-  work (`animation-fill-mode: both` pins state, so the class must be stripped on
-  `animationend`).
+  scroll-snap; direct `scrollLeft` is invalid for testing it); any cascade
+  work (`animation-fill-mode: both` pins state, so the class must be stripped
+  on `animationend`); and Portal specifically (outer-gutter loss on
+  `.portal-group` box-model changes — shipped twice already; anything with a
+  fixed height/margin inside a row whose height moves must blend with
+  `--focus` in the fork, or with nothing at all now that master is static).
 
-  Then the standing queue, unchanged: M2's two deferred responsive bugs → M4
-  (four reference videos still unwatched; three findings already settled, don't
-  re-litigate them) → M5. The two backlog items both explicitly want a phone
-  session before they're decided.
+  Then the standing queue: M2's two deferred responsive bugs → M4 (four
+  reference videos still unwatched; three findings already settled, don't
+  re-litigate them) → M5. The backlog items and everything feel-dependent
+  above still explicitly want a phone session before they're decided.
+
+- **NEXT SESSION IS DECIDED: Portal's immersive tap animation.** Lindsey
+  closed 2026-08-16 with "tomorrow, I will start building Portal immersive
+  animation, when click on the card" — so **start there**, not on the
+  standing queue above and not on `portal-scroll/`.
+
+  What that means concretely, and the context that's already settled so it
+  doesn't get re-litigated:
+  - **Target is MASTER's static Portal**, the 5-row list at `#/portal` —
+    not the `portal-scroll/` fork. The whole reason master moved to a static
+    list was to make this the interesting part: an easy entry point, with the
+    real work in what happens on tap. The fork's known spacer bug above is
+    NOT on the path for this and shouldn't block it.
+  - **The destination is Figma 199:4068** — tapping a row expands into a full
+    vertical feed of real-size content cards, i.e. the same content patterns
+    1–4 reach by scrolling inline. Read that frame before designing anything.
+  - **Nothing is wired yet.** Every row is inert by design: no click handler,
+    no `role`, no `tabindex`, no `:active` state, no cursor change. The
+    `.portal-thumb` pair is `aria-hidden` decorative, and the question text is
+    the row's accessible name — so when the row becomes interactive, the
+    tappable element needs a real accessible name and keyboard activation, not
+    just a click listener on a `<div>`.
+  - **GSAP's `Flip` is the standing candidate** for the card→full-screen
+    transition (recorded under M4, still unexamined). It is NOT a decision —
+    this file's discipline is that a library has to earn its place against a
+    hand-rolled version, and two effects so far (the velocity lag, the
+    switcher slide) were both judged not to need one. View Transitions were
+    already ruled out for the switcher because they snapshot the whole
+    document, which fights M1's "the cascade IS the transition" decision;
+    worth re-checking whether that objection still applies to a single-element
+    expand, since it might not.
+  - **Open question to settle with Lindsey first, not to assume:** does the
+    expanded feed replace the row in place (list stays, one row grows), or
+    does it take over the screen as a new view (needs a way back, and a
+    decision about whether the switcher stays visible)? Those lead to very
+    different transitions. Ask before building.
+  - Zero build step, zero dependencies is still the constraint — if `Flip`
+    wins, that's a real trade-off to raise explicitly, not to slip in.
