@@ -83,8 +83,12 @@ that.
   the reasoning are in M4's findings and the session log. Native scroll is
   retained; no library.
 - Live at `https://ziyun-liang.github.io/topic-explore-patterns/`, current as of
-  commit `3b6c813`. Verified against the **deployed** URL, not just localhost
-  (Playwright at 390×844 and 1440×900, zero console errors).
+  commit `704599c` (2026-08-16, the static Portal). Verified against the
+  **deployed** URL, not just localhost: Playwright at 390×844 and 1440×900,
+  all five routes, zero console errors, Portal's five rows each showing the
+  rotated two-square thumbnail and the shared 19px `.q-title`. The fork is
+  deployed too and works — `/portal-scroll/` serves 5 rows, 15 real stack
+  cards and its spacer, zero console errors.
 - **Outstanding: never checked on a real phone.** Everything feel-dependent is
   unverified — press feedback, switcher scroll momentum, the M1 cascade rhythm
   and accordion height, the 240ms thumb slide, the new card size and bar weights,
