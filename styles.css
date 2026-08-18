@@ -75,6 +75,8 @@
 	--dur-swap: 200ms;   /* tab content re-enter — tighter, reader is oriented */
 	--dur-height: 260ms; /* accordion open/close */
 	--dur-slide: 240ms;  /* switcher indicator travelling between segments */
+	--dur-expand: 340ms;   /* Portal row -> full-screen feed box-morph */
+	--dur-collapse: 280ms; /* feed -> row; exit a touch faster than enter */
 	--stagger: 40ms;
 	--rise: 8px;
 
@@ -868,51 +870,44 @@ svg { display: block; }
 	padding-block: var(--s-2) var(--s-5);
 }
 
-/* ---------- Card Swipe (#/swipe) ---------- */
+/* ---------- Stacking Card (#/swipe) ---------- */
 
 .swipe-group { padding: 0 var(--gutter); }
 .swipe-group + .swipe-group { margin-top: var(--group-gap); }
 
-/* Sized and aligned to match the scrolling rows: same 88% width, same
-   355/473 box. Was a narrow 62%/248px stack centred in the column — the new cards
-   are content-bearing enough that centring a small deck read as a different
-   object from the same cards elsewhere. */
-.deck {
+/* A Stacking Card row IS the carousel row — same markup, same native scroll,
+   same velocity lag. The only additions are for the resting depth stack, which
+   patterns.js scrubs open with scroll (see writeTransforms):
+   - position:relative so the front card can be lifted above the others by
+     z-index while they overlap it (JS sets z-index at mount);
+   - a shadow that reads the stack, toggled on ONLY while `.is-stacked` (JS adds
+     the class below the unstack threshold) and fading via a CSS transition so a
+     mid-scrub frame never has to repaint a growing/shrinking shadow. */
+.cards-row--stack > .card {
 	position: relative;
-	width: 88%;
-	aspect-ratio: 355 / 473;
-	/* Left-aligned now, not `auto` — the deck starts at the gutter like every
-	   other card row. The bottom margin still has to clear the stacked cards
-	   before the hint. */
-	margin: var(--s-4) 0 var(--s-7);
-	touch-action: pan-y;
+	transition: box-shadow .2s var(--ease-out);
 }
 
-.deck-card {
-	position: absolute;
-	inset: 0;
-	border-radius: var(--r-lg);
-	/* The deck is the one place a shadow is earned: the cards share a fill, so
-	   depth is the only thing that separates them from each other and from the
-	   white page. Faded opacity was washing them out — offset + scale + shadow
-	   carries the stack instead (see layout() in patterns.js). */
+/* Mouse/pen affordance: the row is draggable (patterns.js enableDragScroll).
+   Touch keeps native scrolling, so this cursor is only meaningful with a
+   pointer. user-select is killed only mid-drag so a drag can't select content. */
+.cards-row--stack { cursor: grab; }
+.cards-row--stack.dragging { cursor: grabbing; user-select: none; }
+
+.cards-row--stack.is-stacked > .card {
+	/* Same depth shadow the old deck earned: the cards share a near-white fill,
+	   so shadow — not opacity — is what separates the stacked layers. */
 	box-shadow: 0 4px 14px -3px rgba(0, 0, 0, .16);
-	transition: transform .28s var(--ease-out), opacity .28s var(--ease-out);
-	cursor: grab;
-	will-change: transform;
 }
-
-.deck-card:active { cursor: grabbing; }
-.deck-card.dragging { transition: none; }
 
 .deck-hint {
+	margin: var(--s-4) 0 0;
 	text-align: center;
 	font-size: var(--t-meta);
 	font-weight: 500;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
 	color: var(--ink-3);
-	margin: 0;
 }
 
 /* ---------- Portal (#/portal) ----------
@@ -970,11 +965,25 @@ svg { display: block; }
    re-verified here by measuring row width (350, not 390) and left offset
    (20, not 0) at a 390px viewport. */
 .portal-group {
+	/* Now a real <button> (each row expands into the feed), so it needs the
+	   usual button resets to look like the block it replaced — including
+	   `border: none`, or the UA's default button border draws a dark outline
+	   around every row (there are NO borders anywhere else in this file). */
+	appearance: none;
+	-webkit-appearance: none;
+	border: none;
+	width: calc(100% - 2 * var(--gutter));
+	text-align: left;
+	cursor: pointer;
+	color: inherit;
 	display: flex;
 	align-items: center;
 	gap: var(--s-5);
 	height: 144px;
 	margin-inline: var(--gutter);
+	/* Press feedback + the box-morph timing when it grows. transform-origin
+	   center so the press scale doesn't drift. */
+	transition: transform var(--dur-press) var(--ease-out);
 	/* --s-6 (24), not --s-7 (32): the Figma's own insets are 30 left and 25.4
 	   right, so 24 is the closer token on both sides — and at our 350px row
 	   (vs the Figma frame's 390px) the extra 8px per side is what keeps a
@@ -1071,6 +1080,160 @@ svg { display: block; }
 	background: var(--g-2);
 }
 
+.portal-group:active { transform: scale(0.98); }
+
+/* Switcher is hidden while the feed is open (harness chrome shouldn't sit over an
+   immersive view). Kept mounted, not removed, so the indicator's persistent DOM
+   and positionThumb state survive — see patterns.js. */
+.switcher { transition: opacity 200ms var(--ease-out); }
+.switcher.is-hidden { opacity: 0; pointer-events: none; }
+
+/* ---------- Portal immersive feed (tap a row -> full-screen content feed) ----------
+   The tapped .portal-group grows into .portal-feed via the View Transitions API
+   (see openFeed in patterns.js). Two named shared elements do the morph:
+     portal-hero  — the row box -> this .portal-feed (grows, radius 20px -> 0)
+     portal-title — the row .q-title -> .feed-title (travels into the header)
+   Everything else is the transition root and cross-fades.
+
+   Positioned on the .device element: at phone width .device is display:contents,
+   so `position: fixed` resolves against the viewport and the feed covers the whole
+   screen regardless of scroll. At >=900px .device is the real (positioned) frame,
+   so the desktop override switches to `position: absolute` and the feed is clipped
+   to the frame. There the ::view-transition layer can't be used (its top layer is
+   NOT clipped by the frame), so the same box-morph is hand-rolled with an inline
+   FLIP on transform + border-radius instead — see the desktop block below and
+   openFeed/closeFeed in patterns.js. */
+.portal-feed {
+	position: fixed;
+	inset: 0;
+	z-index: 40;
+	display: flex;
+	flex-direction: column;
+	/* The full screen "picks up" the row's own grey as it grows into it. */
+	background: var(--g-1);
+	overflow-y: auto;
+	overflow-x: hidden;
+	scrollbar-width: none;
+	-webkit-overflow-scrolling: touch;
+}
+
+.portal-feed::-webkit-scrollbar { display: none; }
+
+/* Sticky so the question/back stay put while the cards scroll under them,
+   dissolving into the header like every other pattern's sticky header. */
+.feed-header {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: var(--g-1);
+	padding: var(--s-5) var(--gutter) var(--s-4);
+}
+
+.feed-header::after {
+	content: '';
+	position: absolute;
+	top: 100%;
+	left: 0;
+	right: 0;
+	height: var(--s-5);
+	background: linear-gradient(var(--g-1), rgba(241, 241, 241, 0));
+	pointer-events: none;
+}
+
+/* Chevron-only (no "Ways in" label): the title below already names the
+   destination. Same white-circle-on-grey affordance as the pattern-header back. */
+.feed-back {
+	appearance: none;
+	-webkit-appearance: none;
+	border: none;
+	display: grid;
+	place-items: center;
+	width: 36px;
+	height: 36px;
+	margin-bottom: var(--s-5);
+	border-radius: var(--r-pill);
+	background: var(--g-0);
+	color: var(--ink);
+	cursor: pointer;
+	transition: transform var(--dur-press) var(--ease-out),
+	            background-color var(--dur-press) var(--ease-out);
+}
+
+.feed-back:active { transform: scale(0.92); }
+
+/* The question, as the feed's title. SHARED type token (--t-title), never a new
+   size — the low-fi craft rule holds here too. */
+.feed-title {
+	margin: 0;
+	font-size: var(--t-title);
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	line-height: 1.3;
+}
+
+/* Two decorative meta bars (a dek / byline placeholder), matching the reference. */
+.feed-meta {
+	display: flex;
+	flex-direction: column;
+	gap: var(--s-2);
+	margin-top: var(--s-4);
+}
+
+.feed-meta-bar {
+	height: 12px;
+	border-radius: var(--r-pill);
+	background: var(--g-2);
+}
+
+.feed-meta-bar:last-child { width: 96%; }
+
+/* The vertical feed of full-size cards. NOT .cards-row (that class is the
+   horizontal velocity-lag scroller); this is a plain vertical stack. */
+.feed-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--s-5);
+	padding: var(--s-3) var(--gutter) calc(var(--s-7) + var(--s-6));
+}
+
+/* Full-width here (the row scroller sizes cards to 88% for the peek; the feed
+   shows one card at a time). Same fixed aspect-ratio as everywhere else. */
+.feed-list .card {
+	width: 100%;
+	aspect-ratio: 355 / 473;
+}
+
+/* ---- View Transition tuning (phone-width box-morph) ----
+   --vt-dur is flipped between --dur-expand and --dur-collapse by patterns.js so
+   open and close can differ (exit a touch faster, per the motion craft rules). */
+::view-transition-group(portal-hero),
+::view-transition-group(portal-title) {
+	animation-duration: var(--vt-dur, var(--dur-expand));
+	animation-timing-function: var(--ease-out);
+}
+
+/* The hero's old (row) and new (feed) contents cross-fade quickly so the box you
+   see growing reads as one surface changing, not two stacked bitmaps sliding —
+   the classic snapshot-blur mask. */
+::view-transition-old(portal-hero),
+::view-transition-new(portal-hero) {
+	animation-duration: var(--vt-dur, var(--dur-expand));
+	animation-timing-function: var(--ease-out);
+}
+
+/* ---- Desktop box-morph ----
+   At >=900px the feed is an absolutely-positioned child of the framed .device,
+   so a box grown to full size stays clipped inside the frame — which View
+   Transitions (a viewport-level top layer) can't do. patterns.js hand-rolls a
+   FLIP: it drives transform + border-radius inline from the tapped row's rect
+   out to the frame. The only job here is to fade the feed's own content in over
+   that grow (.feed-morph), so the box's non-uniform scale never distorts the
+   header/cards — the grey box grows, then the content resolves. */
+@media (min-width: 900px) {
+	.portal-feed { position: absolute; }
+	.portal-feed > * { transition: opacity var(--dur-expand) var(--ease-out); }
+	.portal-feed.feed-morph > * { opacity: 0; }
+}
 
 /* ---------- Device frame (desktop only) ----------
    Shadow only, no bezel: a hard black ring was the one high-contrast edge left
@@ -1216,9 +1379,24 @@ svg { display: block; }
 	.acc-header:active,
 	.tab:active,
 	.switcher-btn:active,
-	.back-link:active { transform: none; }
+	.back-link:active,
+	.portal-group:active,
+	.feed-back:active { transform: none; }
 
-	.deck-card { transition: opacity .2s ease; }
+	/* No box travel: collapse the hero/title morph to effectively instant so the
+	   feed just appears/disappears. The transition root still cross-fades (opacity
+	   only), which aids comprehension without moving anything. */
+	::view-transition-group(portal-hero),
+	::view-transition-group(portal-title) { animation-duration: 1ms !important; }
+
+	/* Desktop: the JS morph branch is gated on !prefersReducedMotion(), so the
+	   feed just appears/disappears instantly — no box grow, no content fade. */
+	.portal-feed > * { transition: none; }
+
+	/* Stacking Card never stacks under reduced motion — initStackRow bails, so no
+	   transform is ever written. Belt-and-braces in case a class lingers: keep it
+	   a plain, flat carousel row. */
+	.cards-row--stack > .card { transform: none; box-shadow: none; }
 
 	/* Same class, movement-free keyframe, no stagger. */
 	.rise-in,

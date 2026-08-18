@@ -15,7 +15,7 @@
 		{ id: 'carousel', label: 'Carousel' },
 		{ id: 'tabs', label: 'Tabs' },
 		{ id: 'accordion', label: 'Accordion' },
-		{ id: 'swipe', label: 'Card Swipe' },
+		{ id: 'swipe', label: 'Stacking Card' },
 		{ id: 'portal', label: 'Portal' }
 	];
 
@@ -192,11 +192,15 @@
 	}
 
 	// One row per question, carrying all three kinds in this question's order.
-	function cardRowHTML(index) {
+	// `stack` marks it as a Stacking Card row: same markup and same scroll
+	// pipeline as the plain carousel, but the shared scroll handler additionally
+	// collapses it into a depth stack at rest (see writeTransforms / initStackRow).
+	function cardRowHTML(index, stack) {
 		var cards = cardOrder(index).map(function (kind, i) {
 			return cardHTML(kind, index + i);
 		}).join('');
-		return '<div class="cards-row">' + cards + '</div>';
+		return '<div class="cards-row' + (stack ? ' cards-row--stack' : '') + '">' +
+			cards + '</div>';
 	}
 
 	// Filled card skeleton — a card that reads as a physical object rather than
@@ -389,112 +393,31 @@
 		});
 	}
 
-	// ---------- Card Swipe: drag-to-cycle deck per direction ----------
-
-	// `kinds` is this question's card order, so the deck cycles through the same
-	// three content kinds the other patterns lay out in a row.
-	function createDeck(kinds, variant, withHint) {
-		var deck = document.createElement('div');
-		deck.className = 'deck';
-
-		var count = kinds.length;
-		var cards = [];
-		kinds.forEach(function (kind, i) {
-			var c = document.createElement('div');
-			c.className = 'deck-card';
-			// A real card, not a separate skeleton: cardHTML returns the outer
-			// .card element, so unwrap it into the positioned .deck-card.
-			c.innerHTML = cardHTML(kind, variant + i);
-			var inner = c.firstChild;
-			c.className = 'deck-card ' + inner.className;
-			c.innerHTML = inner.innerHTML;
-			deck.appendChild(c);
-			cards.push(c);
-		});
-
-		// Depth comes from offset + scale + the card's own shadow, NOT from
-		// fading opacity: the cards share a fill that's barely off white, so
-		// fading them made the stack disappear entirely rather than recede.
-		//
-		// Offsets right AND down (Figma 199:5357). It used to offset straight down,
-		// which read as a shorter card rather than a stack. The scale is what insets
-		// the top and bottom, so translateY only needs to be small — enough to break
-		// the symmetry, not enough to push the back card below the front one.
-		function layout() {
-			cards.forEach(function (el, idx) {
-				el.style.zIndex = String(count - idx);
-				el.style.opacity = '1';
-				el.style.transform =
-					'translate(' + idx * 16 + 'px, ' + idx * 6 + 'px) ' +
-					'scale(' + (1 - idx * 0.035) + ')';
-			});
-		}
-		layout();
-
-		var dragEl = null, startX = 0, currentX = 0, dragging = false;
-		var THRESHOLD = 60;
-
-		deck.addEventListener('pointerdown', function (e) {
-			var card = e.target.closest('.deck-card');
-			if (!card || card !== cards[0]) return;
-			dragEl = card;
-			dragging = true;
-			startX = e.clientX;
-			currentX = 0;
-			dragEl.classList.add('dragging');
-			try { dragEl.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
-		});
-
-		deck.addEventListener('pointermove', function (e) {
-			if (!dragging || !dragEl) return;
-			currentX = e.clientX - startX;
-			dragEl.style.transform =
-				'translateX(' + currentX + 'px) rotate(' + currentX / 18 + 'deg)';
-		});
-
-		function endDrag() {
-			if (!dragging || !dragEl) return;
-			dragging = false;
-			var el = dragEl;
-			dragEl = null;
-			el.classList.remove('dragging');
-
-			if (Math.abs(currentX) > THRESHOLD) {
-				var dir = currentX > 0 ? 1 : -1;
-				el.style.transform =
-					'translateX(' + dir * 480 + 'px) rotate(' + dir * 24 + 'deg)';
-				el.style.opacity = '0';
-				setTimeout(function () {
-					cards.push(cards.shift());
-					layout();
-				}, 220);
-			} else {
-				layout();
-			}
-			currentX = 0;
-		}
-
-		deck.addEventListener('pointerup', endDrag);
-		deck.addEventListener('pointercancel', endDrag);
-		deck.addEventListener('lostpointercapture', endDrag);
-
-		var extras = '';
-		if (withHint) extras = '<p class="deck-hint">Drag to cycle</p>';
-
-		return { el: deck, extrasHTML: extras };
-	}
-
+	// ---------- Stacking Card: a carousel row that rests as a depth stack -------
+	//
+	// Renamed from "Card Swipe" (the visible label in PATTERNS; the route id
+	// stays `swipe` so deep links and screenshots don't break). The old build was
+	// a drag-to-dismiss/cycle deck; this is M5(a) — an in-place horizontal
+	// carousel. Each question is the SAME `.cards-row` the Carousel uses, so it
+	// inherits scroll-snap and the velocity-lag "swipe" animation for free. The
+	// only addition is a rest state: the shared .cards-row scroll pipeline
+	// (writeTransforms below) collapses the 2nd/3rd cards into a depth stack
+	// behind the 1st when the row is scrolled to the start, and scrubs them out
+	// into their slots as you swipe. Reversible; scroll back to the start and it
+	// re-stacks. See initStackRow for the mount-time rest state.
 	function renderSwipe(main, directions) {
 		directions.forEach(function (d, i) {
 			var group = document.createElement('div');
 			group.className = 'swipe-group cascade-item';
-			group.innerHTML = '<p class="q-title">' + escapeHTML(d.question) + '</p>';
-
-			var deck = createDeck(cardOrder(i), i, i === 0);
-			group.appendChild(deck.el);
-			if (deck.extrasHTML) group.insertAdjacentHTML('beforeend', deck.extrasHTML);
-
+			group.innerHTML =
+				'<p class="q-title">' + escapeHTML(d.question) + '</p>' +
+				cardRowHTML(i, true) +
+				(i === 0 ? '<p class="deck-hint">Swipe to browse</p>' : '');
 			main.appendChild(group);
+			// Apply the stacked rest state now: no scroll event fires on mount, so
+			// without this the row would flash unstacked and only stack on first
+			// touch. Runs after append so the cards have measurable layout offsets.
+			initStackRow(group.querySelector('.cards-row--stack'));
 		});
 	}
 
@@ -523,9 +446,14 @@
 	// card was tried in the previous version and read as strange).
 	function renderPortal(main, directions) {
 		main.innerHTML = directions
-			.map(function (d) {
+			.map(function (d, i) {
+				// A real <button>, not a <div>: the row is now tappable (it
+				// expands into the full content feed, see openFeed below), so it
+				// needs a genuine accessible name (the question text) and native
+				// keyboard activation. A <button> fires click on Enter/Space for
+				// free, so there's no separate keydown handler to maintain.
 				return (
-					'<div class="portal-group cascade-item">' +
+					'<button type="button" class="portal-group cascade-item" data-i="' + i + '">' +
 					// .q-title, the SHARED question style every other pattern
 					// uses — not a Portal-specific class. Lindsey's explicit
 					// correction: Portal's questions must be the same
@@ -534,17 +462,263 @@
 					// type size is a variable that shouldn't be varying. An
 					// earlier version of this row used its own smaller 15px
 					// class; don't reintroduce that.
-					'<p class="q-title">' + escapeHTML(d.question) + '</p>' +
+					'<span class="q-title">' + escapeHTML(d.question) + '</span>' +
 					// Decorative only — the question text is the accessible name of
 					// the row, and announcing two empty boxes would add nothing.
 					'<span class="portal-thumb" aria-hidden="true">' +
 					'<span class="portal-thumb-back"></span>' +
 					'<span class="portal-thumb-front"></span>' +
 					'</span>' +
-					'</div>'
+					'</button>'
 				);
 			})
 			.join('');
+
+		// One delegated listener rather than five: tapping (or keyboard-
+		// activating) a row expands it into the full-screen feed.
+		main.addEventListener('click', function (e) {
+			var row = e.target.closest('.portal-group');
+			if (!row || !main.contains(row)) return;
+			openFeed(main, directions, row, Number(row.dataset.i));
+		});
+	}
+
+	// ---------- Portal immersive expand (tap a row -> full-screen feed) ----------
+	//
+	// The tapped grey row GROWS from its own rect to fill the screen (a literal
+	// iOS-widget box-morph), its contents cross-fading into a vertical feed of
+	// full-size content cards. Built on the native View Transitions API: the
+	// browser captures the row's box (old) and the feed's box (new), then animates
+	// position/size/border-radius between them on the compositor — no manual FLIP
+	// maths, no rAF loop. Two shared elements are named:
+	//   · portal-hero  — the row box  -> the feed container (grows, radius 20->0)
+	//   · portal-title — the row .q-title -> the feed .feed-title (travels up)
+	//
+	// Because the ::view-transition pseudo-tree renders in a viewport-level top
+	// layer that is NOT clipped by the desktop .device frame (overflow:hidden), the
+	// full box-morph is used only at phone width (<900px, the real feel-target).
+	// On desktop it would escape the phone frame, so there we fall back to a plain
+	// contained transition on .portal-feed (a normal descendant of .device, so it
+	// stays inside the frame). Where startViewTransition is unsupported, the feed
+	// simply opens with no morph — fully functional either way.
+	var feedState = null;
+
+	function isDesktopFrame() {
+		return window.matchMedia('(min-width: 900px)').matches;
+	}
+
+	function setVTName(el, name) { if (el) el.style.viewTransitionName = name; }
+
+	// Places the feed's box exactly over the tapped row — the FIRST/INVERT half of
+	// a FLIP. Animating from here to identity grows the grey box out to fill the
+	// frame (and reverse on close). transform-origin 0 0 keeps the translate+scale
+	// a straight box map; radius starts at the row's 20px and lands at the feed's 0.
+	function setFlipToRow(feedEl, device, rowEl) {
+		var dr = device.getBoundingClientRect();
+		var rr = rowEl.getBoundingClientRect();
+		var sx = Math.max(rr.width / dr.width, 0.0001);
+		var sy = Math.max(rr.height / dr.height, 0.0001);
+		feedEl.style.transformOrigin = '0 0';
+		feedEl.style.transform =
+			'translate(' + (rr.left - dr.left) + 'px,' + (rr.top - dr.top) + 'px) ' +
+			'scale(' + sx + ',' + sy + ')';
+		feedEl.style.borderRadius = '20px';
+	}
+
+	function buildFeedEl(directions, index) {
+		var d = directions[index];
+		var cards = cardOrder(index).map(function (kind, i) {
+			return cardHTML(kind, index + i);
+		}).join('');
+		var feed = document.createElement('div');
+		feed.className = 'portal-feed';
+		// role/aria: it's a transient view over the list; label it by its title.
+		feed.setAttribute('role', 'group');
+		feed.innerHTML =
+			'<div class="feed-header">' +
+			'<button type="button" class="feed-back" aria-label="Back">' +
+			icon('chevron-left', 20) + '</button>' +
+			'<h2 class="feed-title">' + escapeHTML(d.question) + '</h2>' +
+			// Two decorative meta bars (a dek / byline placeholder), matching the
+			// reference. Decorative, so aria-hidden.
+			'<div class="feed-meta" aria-hidden="true">' +
+			'<span class="feed-meta-bar"></span>' +
+			'<span class="feed-meta-bar"></span>' +
+			'</div>' +
+			'</div>' +
+			// NOT .cards-row: the horizontal velocity-lag scroll listener is scoped
+			// to .cards-row, and this is a vertical feed that must never be caught
+			// by it.
+			'<div class="feed-list">' + cards + '</div>';
+		return feed;
+	}
+
+	function openFeed(main, directions, rowEl, index) {
+		if (feedState) return; // already open / mid-transition
+		var device = main.closest('.device');
+		var feedEl = buildFeedEl(directions, index);
+		var rowTitle = rowEl.querySelector('.q-title');
+
+		feedState = {
+			device: device, main: main, rowEl: rowEl, feedEl: feedEl,
+			keyHandler: null, closing: false
+		};
+
+		function mount() {
+			device.appendChild(feedEl);
+			if (switcherEl) switcherEl.classList.add('is-hidden');
+			document.documentElement.classList.add('feed-open');
+		}
+
+		function afterOpen() {
+			var back = feedEl.querySelector('.feed-back');
+			back.addEventListener('click', function () { closeFeed(); });
+			var keyHandler = function (e) {
+				if (e.key === 'Escape') { e.preventDefault(); closeFeed(); }
+			};
+			document.addEventListener('keydown', keyHandler);
+			feedState.keyHandler = keyHandler;
+			// Move focus into the feed so keyboard users land on the way out.
+			back.focus();
+		}
+
+		if (!isDesktopFrame() && typeof document.startViewTransition === 'function') {
+			document.documentElement.style.setProperty('--vt-dur', 'var(--dur-expand)');
+			// Old state: the row carries the shared names (feed not in DOM yet).
+			setVTName(rowEl, 'portal-hero');
+			setVTName(rowTitle, 'portal-title');
+			var t = document.startViewTransition(function () {
+				mount();
+				// New state: hand the names to the feed and strip them from the
+				// row, so no name is duplicated within a single captured state
+				// (a duplicate aborts the whole transition).
+				setVTName(rowEl, '');
+				setVTName(rowTitle, '');
+				setVTName(feedEl, 'portal-hero');
+				setVTName(feedEl.querySelector('.feed-title'), 'portal-title');
+			});
+			t.updateCallbackDone.then(afterOpen);
+			t.finished.then(function () { clearFeedVT(); }, function () { clearFeedVT(); });
+		} else {
+			mount();
+			// Desktop (or no-VT): a hand-rolled FLIP box-morph, clipped to the frame
+			// because .portal-feed is an absolute child of .device. (View Transitions
+			// can't be used here — their top layer isn't clipped by the frame, so a
+			// box grown to "full screen" would spill outside the phone.) The grey box
+			// grows from the tapped row's rect out to the full frame while the content
+			// fades in, so the non-uniform scale never shows on the header/cards.
+			if (isDesktopFrame() && !prefersReducedMotion()) {
+				feedEl.classList.add('feed-morph');   // content starts hidden
+				setFlipToRow(feedEl, device, rowEl);  // box starts on the row
+				feedEl.style.willChange = 'transform';
+				void feedEl.offsetWidth;               // commit the start state
+				feedEl.style.transition =
+					'transform var(--dur-expand) var(--ease-out), ' +
+					'border-radius var(--dur-expand) var(--ease-out)';
+				feedEl.style.transform = 'translate(0px,0px) scale(1,1)';
+				feedEl.style.borderRadius = '0px';
+				feedEl.classList.remove('feed-morph'); // content fades in
+				var onEnd = function (e) {
+					if (e.target !== feedEl || e.propertyName !== 'transform') return;
+					feedEl.removeEventListener('transitionend', onEnd);
+					feedEl.style.transition = '';
+					feedEl.style.transform = '';
+					feedEl.style.transformOrigin = '';
+					feedEl.style.borderRadius = '';
+					feedEl.style.willChange = '';
+				};
+				feedEl.addEventListener('transitionend', onEnd);
+				feedState.openEnd = onEnd; // so an interrupting close can detach it
+			}
+			afterOpen();
+		}
+	}
+
+	// Clears the shared-element names from whichever elements currently hold them,
+	// so the next transition starts from a clean slate.
+	function clearFeedVT() {
+		if (!feedState) return;
+		[feedState.rowEl, feedState.rowEl && feedState.rowEl.querySelector('.q-title'),
+			feedState.feedEl, feedState.feedEl && feedState.feedEl.querySelector('.feed-title')]
+			.forEach(function (el) { if (el) el.style.viewTransitionName = ''; });
+	}
+
+	// Immediate, animation-free teardown. Normal UX can't reach this (a feed's
+	// only exits — Back / Escape — already run closeFeed), but a route change while
+	// a feed is somehow open would otherwise strand feedState pointing at a removed
+	// node, and the next openFeed would bail on its `if (feedState) return` guard.
+	// Called from render() as a belt-and-braces reset.
+	function forceCloseFeed() {
+		if (!feedState) return;
+		var fs = feedState;
+		if (fs.keyHandler) document.removeEventListener('keydown', fs.keyHandler);
+		if (fs.openEnd) fs.feedEl.removeEventListener('transitionend', fs.openEnd);
+		clearFeedVT();
+		if (fs.feedEl && fs.feedEl.parentNode) fs.feedEl.parentNode.removeChild(fs.feedEl);
+		if (switcherEl) switcherEl.classList.remove('is-hidden');
+		document.documentElement.classList.remove('feed-open');
+		feedState = null;
+	}
+
+	function closeFeed() {
+		if (!feedState || feedState.closing) return;
+		feedState.closing = true;
+		var fs = feedState;
+		if (fs.keyHandler) document.removeEventListener('keydown', fs.keyHandler);
+		// If the desktop open morph is still running, detach its cleanup so it can't
+		// fire on the close transition and wipe the transform mid-collapse.
+		if (fs.openEnd) { fs.feedEl.removeEventListener('transitionend', fs.openEnd); fs.openEnd = null; }
+
+		function unmount() {
+			if (fs.feedEl.parentNode) fs.feedEl.parentNode.removeChild(fs.feedEl);
+			if (switcherEl) switcherEl.classList.remove('is-hidden');
+			document.documentElement.classList.remove('feed-open');
+		}
+		function done() {
+			if (fs.rowEl && fs.rowEl.focus) fs.rowEl.focus();
+			feedState = null;
+		}
+
+		if (!isDesktopFrame() && typeof document.startViewTransition === 'function') {
+			document.documentElement.style.setProperty('--vt-dur', 'var(--dur-collapse)');
+			// Old state: the feed carries the names (row has none).
+			setVTName(fs.feedEl, 'portal-hero');
+			setVTName(fs.feedEl.querySelector('.feed-title'), 'portal-title');
+			var t = document.startViewTransition(function () {
+				unmount(); // removes the feed, so its names leave with it
+				setVTName(fs.rowEl, 'portal-hero');
+				setVTName(fs.rowEl.querySelector('.q-title'), 'portal-title');
+			});
+			t.finished.then(function () {
+				setVTName(fs.rowEl, '');
+				setVTName(fs.rowEl.querySelector('.q-title'), '');
+				done();
+			}, function () {
+				setVTName(fs.rowEl, '');
+				setVTName(fs.rowEl.querySelector('.q-title'), '');
+				done();
+			});
+		} else if (isDesktopFrame() && !prefersReducedMotion()) {
+			// Reverse FLIP: shrink the box back onto the row while the content fades
+			// out, then unmount once the transform settles.
+			fs.feedEl.style.willChange = 'transform';
+			fs.feedEl.style.transition =
+				'transform var(--dur-collapse) var(--ease-out), ' +
+				'border-radius var(--dur-collapse) var(--ease-out)';
+			fs.feedEl.classList.add('feed-morph'); // content fades out
+			void fs.feedEl.offsetWidth;             // commit the current (identity) state
+			setFlipToRow(fs.feedEl, fs.device, fs.rowEl); // animate down to the row rect
+			var onEnd = function (e) {
+				if (e.target !== fs.feedEl || e.propertyName !== 'transform') return;
+				fs.feedEl.removeEventListener('transitionend', onEnd);
+				unmount();
+				done();
+			};
+			fs.feedEl.addEventListener('transitionend', onEnd);
+		} else {
+			unmount();
+			done();
+		}
 	}
 
 
@@ -738,6 +912,11 @@
 		var app = document.getElementById('app');
 		var hash = location.hash.replace(/^#\/?/, '');
 
+		// A Portal feed can only be open on the Portal route, and its own exits
+		// close it — but if we're navigating for any other reason, tear it down
+		// synchronously so feedState never outlives its DOM.
+		forceCloseFeed();
+
 		// (No per-pattern teardown needed here. Portal used to own a rAF loop
 		// that had to be stopped on every route change; the static Portal has
 		// no loop, no listeners and no state, so there is nothing to clean up.
@@ -829,6 +1008,19 @@
 	var MIN_DT = 1 / 240;     // floor on dt, in seconds — see comment below
 	var LAG_CAP = 40;         // px — ceiling so a hard flick can't fling a card
 
+	// ---- Stacking Card rest state (composed into the same transform as the lag) ----
+	// The stack fully unstacks over this fraction of the first card's natural
+	// pitch, so the cards have spread into their slots a touch before the row
+	// snaps to the second card. Tunable: 0 = fully stacked, 1 = fully open.
+	var STACK_UNSTACK_FRAC = 0.8;
+	// Rest-state depth, matching the old deck exactly (Figma 199:5357): each card
+	// behind the front peeks right + down and scales down a step. Depth reads via
+	// shadow (toggled in CSS by `.is-stacked`), not opacity — the cards share a
+	// near-white fill, so fading them would erase the stack.
+	var STACK_PEEK_X = 16;    // px per depth step, to the right
+	var STACK_PEEK_Y = 6;     // px per depth step, down
+	var STACK_SCALE = 0.035;  // scale reduction per depth step
+
 	var lagRows = []; // rows currently tracked; only ones that have actually scrolled
 	var lagRAF = null;
 
@@ -858,8 +1050,31 @@
 		var alpha = 1 - Math.exp(-dt / VEL_TAU);
 		row._lagVel += (instVel - row._lagVel) * alpha;
 
-		var cards = row._lagCards;
 		var settled = Math.abs(row._lagVel) < 1 && Math.abs(dx) < 0.5;
+		writeTransforms(row, row._lagCards, settled);
+		row._lagSettled = settled;
+	}
+
+	// Writes ONE transform per card, composing the velocity lag with — for a
+	// Stacking Card row — the scroll-driven stack collapse. Both effects target
+	// the same `.card`, so they MUST be written together here rather than by two
+	// handlers fighting over `style.transform`. Order matters: the lag translate
+	// is written to the LEFT of the stack translate/scale so it stays in unscaled
+	// px (a point is transformed right-to-left).
+	function writeTransforms(row, cards, settled) {
+		var isStack = row._isStack;
+		var factor = 0, gaps = null;
+		if (isStack) {
+			// progress 0 at the start (stacked) -> 1 once unstacked. factor is its
+			// complement so it can scale every rest-state offset toward zero.
+			var progress = Math.min(1, Math.max(0, row.scrollLeft / row._stackDist));
+			factor = 1 - progress;
+			gaps = row._stackGap;
+			// Shadow is a one-shot CSS toggle at the threshold, not a per-frame
+			// write — it fades via a CSS transition so the scrub stays cheap.
+			if (factor > 0.001) row.classList.add('is-stacked');
+			else row.classList.remove('is-stacked');
+		}
 		for (var i = 0; i < cards.length; i++) {
 			// Index from the LEADING edge in the direction of travel, not a fixed
 			// end — otherwise travel one way spreads the cards (correct) and the
@@ -868,10 +1083,128 @@
 			// vel, and reversing direction means passing through vel≈0 first, so
 			// the jump lands where the multiplier is nil.
 			var idx = row._lagVel >= 0 ? i : (cards.length - 1 - i);
-			var offset = settled ? 0 : Math.max(-LAG_CAP, Math.min(LAG_CAP, row._lagVel * LAG_PER_CARD * idx));
-			cards[i].style.transform = offset ? 'translateX(' + offset + 'px)' : '';
+			var lag = settled ? 0 : Math.max(-LAG_CAP, Math.min(LAG_CAP, row._lagVel * LAG_PER_CARD * idx));
+			if (isStack && factor > 0) {
+				// Cancel the card's natural pitch to pull it back onto the front
+				// card, then add the deck's peek/scale — all scaled by `factor` so
+				// it relaxes to the natural row slot as the row scrolls open.
+				var x = factor * (i * STACK_PEEK_X - (gaps[i] || 0));
+				var y = factor * (i * STACK_PEEK_Y);
+				var s = 1 - factor * (i * STACK_SCALE);
+				cards[i].style.transform =
+					'translateX(' + lag + 'px) translate(' + x + 'px,' + y + 'px) scale(' + s + ')';
+			} else {
+				cards[i].style.transform = lag ? 'translateX(' + lag + 'px)' : '';
+			}
 		}
-		row._lagSettled = settled;
+	}
+
+	// Mount-time setup for a Stacking Card row: cache each card's natural x-offset
+	// (the pitch the stack transform has to cancel), stack the front card on top,
+	// and paint the resting stacked state immediately. Skipped under reduced
+	// motion — the shared scroll listener is disabled there, so a stacked row
+	// could never unstack; it renders as a plain carousel row instead.
+	function initStackRow(row) {
+		if (!row || prefersReducedMotion()) return;
+		row._isStack = true;
+		var cards = row.querySelectorAll(':scope > .card');
+		// Pre-seed the same fields onCardsRowScroll would lazily set, so its
+		// `_lagCards == null` guard is already satisfied and dx isn't NaN on the
+		// first scroll event.
+		row._lagCards = cards;
+		row._lagVel = 0;
+		row._lagPrevScroll = row.scrollLeft;
+		row._lagLastT = null;
+		for (var i = 0; i < cards.length; i++) {
+			cards[i].style.zIndex = String(cards.length - i); // front card on top
+		}
+		measureStackRow(row);
+		writeTransforms(row, cards, true);
+		enableDragScroll(row);
+	}
+
+	// Drag-to-scroll for mouse/pen. Touch is deliberately left to NATIVE scrolling
+	// (a finger swipe already scrubs the row and the browser owns momentum/snap);
+	// a plain mouse has no way to scroll a hidden-scrollbar row, so without this a
+	// desktop drag looked like "nothing happens". While dragging, scroll-snap is
+	// switched off — `scroll-snap-type: x mandatory` clamps every programmatic
+	// scrollLeft to the nearest snap point instantly, which would make the scrub
+	// jump between cards instead of gliding. On release we ease to the nearest
+	// card ourselves, then restore native snap. The scrollLeft writes here feed
+	// the same scroll pipeline as a real swipe, so the unstack + velocity lag play
+	// exactly as they do natively.
+	function enableDragScroll(row) {
+		var down = false, startX = 0, startScroll = 0;
+		row.addEventListener('pointerdown', function (e) {
+			if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+			down = true;
+			row._dragging = true;
+			if (row._settleRAF) { cancelAnimationFrame(row._settleRAF); row._settleRAF = null; }
+			startX = e.clientX;
+			startScroll = row.scrollLeft;
+			row.style.scrollSnapType = 'none';
+			row.classList.add('dragging');
+			try { row.setPointerCapture(e.pointerId); } catch (err) { /* noop */ }
+			e.preventDefault();
+		});
+		row.addEventListener('pointermove', function (e) {
+			if (!down) return;
+			row.scrollLeft = startScroll - (e.clientX - startX);
+		});
+		function release() {
+			if (!down) return;
+			down = false;
+			row._dragging = false;
+			row.classList.remove('dragging');
+			settleSnap(row);
+		}
+		row.addEventListener('pointerup', release);
+		row.addEventListener('pointercancel', release);
+	}
+
+	// Ease scrollLeft to the nearest card start (the stack gaps ARE the snap
+	// points: 0, pitch, 2*pitch), then hand control back to native scroll-snap.
+	// A new drag mid-settle sets `_dragging` and this bails, so the two never
+	// write scrollLeft in the same frame.
+	function settleSnap(row) {
+		var gaps = row._stackGap || [0];
+		var max = row.scrollWidth - row.clientWidth;
+		var sl = row.scrollLeft;
+		var target = gaps.reduce(function (best, g) {
+			return Math.abs(g - sl) < Math.abs(best - sl) ? g : best;
+		}, gaps[0]);
+		target = Math.max(0, Math.min(max, target));
+		var start = sl, dist = target - start, t0 = performance.now(), dur = 260;
+		if (Math.abs(dist) < 0.5) { row.style.scrollSnapType = ''; return; }
+		function step(now) {
+			if (row._dragging) return; // a fresh drag took over
+			var p = Math.min(1, (now - t0) / dur);
+			var eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
+			row.scrollLeft = start + dist * eased;
+			if (p < 1) {
+				row._settleRAF = requestAnimationFrame(step);
+			} else {
+				row._settleRAF = null;
+				row.style.scrollSnapType = ''; // native snap resumes
+			}
+		}
+		row._settleRAF = requestAnimationFrame(step);
+	}
+
+	// Cache each card's natural x-offset (the pitch the stack transform cancels)
+	// and the scroll distance the unstack spans. offsetLeft is a layout position,
+	// unaffected by our transforms, so this is stable UNTIL the row is re-laid-out
+	// at a new width — hence the resize handler below re-runs it. Reading offsetLeft
+	// forces a reflow, so this is done at mount and on resize only, never per frame.
+	function measureStackRow(row) {
+		var cards = row._lagCards;
+		var base = cards.length ? cards[0].offsetLeft : 0;
+		row._stackGap = [];
+		for (var i = 0; i < cards.length; i++) {
+			row._stackGap.push(cards[i].offsetLeft - base);
+		}
+		// Unstack distance from the measured first-card pitch, never zero.
+		row._stackDist = (row._stackGap[1] || 300) * STACK_UNSTACK_FRAC || 1;
 	}
 
 	function lagTick() {
@@ -913,6 +1246,25 @@
 			var row = e.target;
 			if (row.classList && row.classList.contains('cards-row')) onCardsRowScroll(row);
 		}, true);
+
+		// A Stacking Card row's cached pitch goes stale if the row is re-laid-out
+		// at a new width (device rotation, window resize, desktop/phone crossover).
+		// Re-measure and repaint the rest state for every live stack row, coalesced
+		// into one rAF so a resize drag doesn't reflow per event.
+		var resizeRAF = null;
+		window.addEventListener('resize', function () {
+			if (resizeRAF != null) return;
+			resizeRAF = requestAnimationFrame(function () {
+				resizeRAF = null;
+				var rows = document.querySelectorAll('.cards-row--stack');
+				for (var i = 0; i < rows.length; i++) {
+					var row = rows[i];
+					if (!row._isStack) continue;
+					measureStackRow(row);
+					writeTransforms(row, row._lagCards, true);
+				}
+			});
+		});
 	}
 
 	function prefersReducedMotion() {
