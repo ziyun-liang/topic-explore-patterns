@@ -8,8 +8,11 @@ that.
 ## Current state
 
 - Shipped and deployed: 5 interaction patterns (Carousel, Tabs, Accordion,
-  Card Swipe, Portal) on the mocked theme **A.I. education impact**, with real
-  placeholder question copy.
+  **Stacking Card**, Portal) on the mocked theme **A.I. education impact**, with
+  real placeholder question copy. (The fourth pattern was renamed from *Card
+  Swipe* to *Stacking Card* on 2026-08-18 — **visible label only**; the route is
+  still `#/swipe` and every internal id/selector still says `swipe`/`deck-hint`.
+  Rename both the switcher label and any doc copy together if it changes again.)
 - **Motion baseline done (M1).** Nothing cuts any more: content cascades in on
   mount (two-tier — header, then question-groups), the accordion animates its
   height, and tab content re-enters instead of swapping. All five patterns share
@@ -82,19 +85,62 @@ that.
   `reference/Animation/HorizontalSwipe.mp4`, not tuned by feel — measurements and
   the reasoning are in M4's findings and the session log. Native scroll is
   retained; no library.
+- **Portal rows tap-expand into a full-screen feed (done 2026-08-18).** The
+  master static list's rows are now `<button>`s; tapping one grows it into a
+  full-screen vertical feed of real-size content cards (Figma 199:4068), with a
+  back chevron + Escape to collapse. This resolves the deferred "later stage"
+  item — the row that used to be inert now opens. Two morphs, **one behaviour,
+  split only by where it can be clipped:** at phone width (<900px) it's a
+  **View Transitions box-morph** (two shared elements — `portal-hero` the row box
+  → feed, `portal-title` the `.q-title` → `.feed-title`); at desktop width
+  (≥900px) the SAME grow is **hand-rolled as a FLIP** (`setFlipToRow` in
+  `patterns.js` maps the feed's box onto the tapped row's rect, then animates
+  `transform`+`border-radius` out to the frame while the content fades in). The
+  desktop split is **load-bearing, not a downgrade**: a `::view-transition` paints
+  in a viewport-level top layer the phone frame can't clip, so on desktop it would
+  spill outside the framed `.device`; the FLIP stays an absolute child of
+  `.device` (`overflow:hidden`) so it's clipped. Don't "unify" them back onto View
+  Transitions — that's the trap. The feed lives on `.device`, the bottom switcher
+  is hidden (not unmounted) while open, `<html>` gets `feed-open` to lock scroll,
+  and `render()` calls `forceCloseFeed()` so `feedState` can never outlive its DOM
+  across a route change (normal UX can't strand it — Back/Escape both clean up —
+  but a stray route change while open otherwise would). **Resolved open question:**
+  the feed *takes over the screen as a new view* (back chevron to return, switcher
+  hidden), it does NOT expand the row in place.
+- **Card Swipe → Stacking Card: scroll-scrub unstacking (done 2026-08-18).** The
+  old drag-to-dismiss deck is gone. There are now **three independent question
+  rows**, each a normal `.cards-row` flagged `.cards-row--stack` that *rests as a
+  depth stack* (cards offset+scaled behind the front one) and **unstacks into a
+  flat carousel as you scroll** — continuous, reversible, driven by native scroll
+  position (`scrollLeft`), not a dismiss gesture. The unstack transform is
+  *composed with* the existing velocity-lag transform in one `writeTransforms`
+  pass so they can't fight over `transform`. Stack geometry (`_stackGap`,
+  `_stackDist`) is measured from card `offsetLeft` in `measureStackRow` and
+  re-measured on a debounced `resize` — a stale measurement once made the back
+  cards peek the wrong way, so keep the re-measure. **Desktop drag-to-scroll:** a
+  mouse/pen can't "swipe" a hidden-scrollbar row, so `enableDragScroll` translates
+  pointer drag into `scrollLeft` (snap disabled mid-drag, `settleSnap` eases to the
+  nearest card on release); touch stays native. This was added to Stacking Card
+  **only** — Lindsey's explicit call: do NOT add drag-to-scroll to the plain
+  Carousel.
 - Live at `https://ziyun-liang.github.io/topic-explore-patterns/`, current as of
-  commit `704599c` (2026-08-16, the static Portal). Verified against the
-  **deployed** URL, not just localhost: Playwright at 390×844 and 1440×900,
-  all five routes, zero console errors, Portal's five rows each showing the
-  rotated two-square thumbnail and the shared 19px `.q-title`. The fork is
-  deployed too and works — `/portal-scroll/` serves 5 rows, 15 real stack
-  cards and its spacer, zero console errors.
+  commit `7fc5860` (2026-08-18, Portal immersive expand + Stacking Card). Verified
+  the deployed URL serves the new bundle (`setFlipToRow`, `Stacking Card`,
+  `feed-morph` all present; Pages build `built`, no error). Feature verification
+  was on desktop only this session — real clicks open/close the Portal feed
+  (box grows from the row rect → frame → identity, radius 20→0, content fades in;
+  reverse on close; switcher restored; focus returned to the row), Stacking Card
+  unstacks on scroll/drag. The `/portal-scroll/` fork is unchanged and still
+  deployed.
 - **Outstanding: never checked on a real phone.** Everything feel-dependent is
   unverified — press feedback, switcher scroll momentum, the M1 cascade rhythm
   and accordion height, the 240ms thumb slide, the new card size and bar weights,
-  and above all the 17ms lag (it's subtle by design, and main-thread transforms
-  during iOS momentum scrolling are the one thing that could jank). Do this
-  before treating any of it as done.
+  the 17ms lag (subtle by design, and main-thread transforms during iOS momentum
+  scrolling are the one thing that could jank), and now **the two 2026-08-18
+  additions above all: the Portal box-morph — the phone build uses the View
+  Transitions path, which is exactly what a desktop check can't exercise — and
+  Stacking Card's touch unstack + snap on a real finger.** Do this before treating
+  any of it as done.
 - Zero build step, zero dependencies. Plain `index.html` / `styles.css` /
   `content.js` / `patterns.js`. Hash routing (`#/carousel` etc.), pinned
   bottom switcher.
@@ -443,13 +489,27 @@ question to resolve at kickoff — these are deliberately *not* resolved here.
   suppress a bounce that isn't in the source material. If a later video *does*
   show real overshoot, that's the moment a spring integrator earns its place.
 
-- [ ] **M5 — Pattern variants exploration.** Build the two named ideas:
-  (a) Card Swipe becomes an in-place horizontal carousel rather than
-  dismiss-and-cycle; (b) tap or swipe expands a card into an immersive
-  full-screen view. Deliberately sequenced *after* M4 — building these twice
-  (once naive, once in whatever framework M4 picks) wastes the polish work.
-  *Open question:* do these replace their existing pattern, or ship as a
-  toggleable alternate alongside it?
+- [~] **M5 — Pattern variants exploration.** Both named ideas are now built and
+  deployed (2026-08-18), each **replacing** its pattern rather than shipping as a
+  toggleable alternate — that resolves the milestone's open question, in the
+  "replace" direction, for both:
+  (a) *Card Swipe becomes an in-place carousel* → shipped as **Stacking Card**:
+  the dismiss-and-cycle deck is gone, replaced by scroll-scrub unstacking rows
+  (see Current State). Built **without** a framework — the effect is a composed
+  transform on native scroll, so GSAP `Draggable`/`Inertia` still earned nothing
+  (the desktop drag-to-scroll is ~40 lines of Pointer Events, not a gesture
+  library). M4's "GSAP comes back when we take over the gesture" prediction held
+  in reverse: we *didn't* take it over, so we *didn't* need it.
+  (b) *tap expands a card into an immersive full-screen view* → shipped as the
+  **Portal tap-expand feed** (see Current State). Also framework-free: View
+  Transitions on phone, a hand-rolled FLIP on desktop. GSAP `Flip` (the standing
+  M4 candidate for exactly this) was therefore **still not examined** — a third
+  effect judged not to need a library. If a future expand needs interruptible /
+  velocity-aware motion the VT+FLIP pair can't express, that's finally the moment
+  to reach for it.
+  Left for M5 to still consider: whether the *other* three patterns (Carousel,
+  Tabs, Accordion) get any variant, and whether Stacking Card wants a card→feed
+  expand too (right now only Portal expands).
 
 - [ ] **M6 — Real content + fold into napp-100.** Already fully scoped in
   `README.md`'s "Path to hi-fi" section. Listed here only for ordering — not
@@ -484,18 +544,13 @@ promote into a milestone once there's enough shape to act on.
   *after* feeling the cascade on a phone. Don't fold it into another milestone
   silently — it needs its own scope and its own opinion about what the fake
   delay is teaching us.
-- **Portal tap-to-expand-into-feed.** Deferred on purpose, explicitly
-  described by Lindsey as "later stage" work (see Current State) — tapping
-  a row's thumbnail should expand into a full vertical feed of real-size
-  content cards (Figma 199:4068), matching what patterns 1–4 currently just
-  scroll to inline. Needs its own design pass: a Flip-style card→full-screen
-  transition (GSAP's `Flip` is the standing candidate per M4, still
-  unexamined), and — now that master Portal is a static list rather than one
-  focused row — a decision on whether every row expands the same way or
-  only some do. Don't add tap behavior to Portal piecemeal without this —
-  the two pieces need to feel like one gesture. Applies to master's static
-  list; `portal-scroll/`'s fork has its own separate version of this same
-  deferred item, scoped to its focused-row mechanism instead.
+- ~~**Portal tap-to-expand-into-feed.**~~ **Done 2026-08-18** (see Current State
+  + the session log). Every master row expands the same way (a full-screen feed,
+  not per-row variation); the transition is View Transitions on phone + a
+  hand-rolled FLIP on desktop, so GSAP's `Flip` — the standing candidate here —
+  was considered and **still not needed**. `portal-scroll/`'s fork keeps its own
+  separate version of this deferred item, scoped to its focused-row mechanism, and
+  is untouched by this.
 - ~~**Portal's scroll headroom is thin at real phone height.**~~ Resolved,
   but only inside `portal-scroll/` — master's static-list Portal has no
   scroll mechanism at all, so this no longer applies there. The fork's fix
@@ -1004,40 +1059,58 @@ promote into a milestone once there's enough shape to act on.
   re-litigate them) → M5. The backlog items and everything feel-dependent
   above still explicitly want a phone session before they're decided.
 
-- **NEXT SESSION IS DECIDED: Portal's immersive tap animation.** Lindsey
-  closed 2026-08-16 with "tomorrow, I will start building Portal immersive
-  animation, when click on the card" — so **start there**, not on the
-  standing queue above and not on `portal-scroll/`.
+- **2026-08-18 — Portal immersive tap-expand + Card Swipe → Stacking Card.**
+  The two features the previous session queued and named. Both shipped and
+  deployed (commit `7fc5860`); full behaviour is in Current State, the M5
+  milestone, and the two backlog items marked done. What's worth not
+  re-deriving:
+  - **The expanded feed TAKES OVER the screen** (back chevron + Escape to
+    return, switcher hidden), it does NOT grow the row in place — that was the
+    previous session's flagged open question, resolved with Lindsey.
+  - **Two morphs, one behaviour, split only by clip-ability.** Phone (<900px):
+    the **View Transitions API** box-morph (shared elements `portal-hero` /
+    `portal-title`) — so the switcher-era objection ("VT snapshots the whole
+    document") was re-checked and found NOT to apply to this single-view
+    replace, since the whole point here *is* replacing the view. Desktop
+    (≥900px): a **hand-rolled FLIP** (`setFlipToRow` → animate
+    `transform`+`border-radius` from the row's rect out to the frame, content
+    fading in over the grow so the non-uniform scale never shows), because a
+    `::view-transition` top layer isn't clipped by the framed `.device` and
+    would spill outside the phone. **This desktop split is deliberate — don't
+    unify it back onto View Transitions.** `GSAP Flip` (the standing M4
+    candidate for exactly this) was therefore **still not needed** — a third
+    effect that earned no library, alongside the velocity lag and the switcher
+    slide.
+  - **Interrupt-safety / state hygiene.** The open FLIP's `transitionend`
+    cleanup is stored and detached if a close interrupts it; `render()` now
+    calls `forceCloseFeed()` so a route change can't strand `feedState`
+    pointing at a removed feed (normal UX can't reach that — Back/Escape both
+    clean up — but a stray navigation would). A same-hash browser reload does
+    NOT reset JS state, which bit me during testing (a stranded `feedState`
+    blocked the next open via the `if (feedState) return` guard) — a real
+    hard reload or a route change clears it. Worth remembering when testing.
+  - **Stacking Card** replaced the drag-to-dismiss deck with three
+    scroll-scrub unstacking rows (composed with the velocity-lag transform in
+    one `writeTransforms`; stack geometry measured in `measureStackRow` and
+    re-measured on debounced `resize` — a stale measure once made the back
+    cards peek the wrong way). Desktop **drag-to-scroll** (`enableDragScroll`,
+    snap off mid-drag, `settleSnap` on release) was added to Stacking Card
+    **only**, per Lindsey — explicitly NOT to the plain Carousel. Rename is
+    label-only; route stays `#/swipe`.
+  - **Verified on desktop only.** Real-click open/close of the Portal feed
+    (measured the FLIP start/mid/end via computed style, plus a mid-morph
+    screenshot), Stacking Card unstack on scroll+drag, deployed bundle serves
+    the new code. The View Transitions phone path and both features' touch feel
+    are the standing unverified gap — a real phone is now more overdue than
+    ever (see the Outstanding bullet in Current State).
 
-  What that means concretely, and the context that's already settled so it
-  doesn't get re-litigated:
-  - **Target is MASTER's static Portal**, the 5-row list at `#/portal` —
-    not the `portal-scroll/` fork. The whole reason master moved to a static
-    list was to make this the interesting part: an easy entry point, with the
-    real work in what happens on tap. The fork's known spacer bug above is
-    NOT on the path for this and shouldn't block it.
-  - **The destination is Figma 199:4068** — tapping a row expands into a full
-    vertical feed of real-size content cards, i.e. the same content patterns
-    1–4 reach by scrolling inline. Read that frame before designing anything.
-  - **Nothing is wired yet.** Every row is inert by design: no click handler,
-    no `role`, no `tabindex`, no `:active` state, no cursor change. The
-    `.portal-thumb` pair is `aria-hidden` decorative, and the question text is
-    the row's accessible name — so when the row becomes interactive, the
-    tappable element needs a real accessible name and keyboard activation, not
-    just a click listener on a `<div>`.
-  - **GSAP's `Flip` is the standing candidate** for the card→full-screen
-    transition (recorded under M4, still unexamined). It is NOT a decision —
-    this file's discipline is that a library has to earn its place against a
-    hand-rolled version, and two effects so far (the velocity lag, the
-    switcher slide) were both judged not to need one. View Transitions were
-    already ruled out for the switcher because they snapshot the whole
-    document, which fights M1's "the cascade IS the transition" decision;
-    worth re-checking whether that objection still applies to a single-element
-    expand, since it might not.
-  - **Open question to settle with Lindsey first, not to assume:** does the
-    expanded feed replace the row in place (list stays, one row grows), or
-    does it take over the screen as a new view (needs a way back, and a
-    decision about whether the switcher stays visible)? Those lead to very
-    different transitions. Ask before building.
-  - Zero build step, zero dependencies is still the constraint — if `Flip`
-    wins, that's a real trade-off to raise explicitly, not to slip in.
+- **NEXT SESSION IS OPEN.** The previous "next session is decided: Portal
+  immersive tap animation" is **done** (2026-08-18, above). Lindsey wrapped
+  saying she'll start a new session with a new task — so there's no pre-committed
+  next thing. When it starts, the standing queue is still: M2's two deferred
+  responsive bugs → M4 (four reference videos still unwatched; three findings
+  settled, don't re-litigate) → the rest of M5 (variants for the other three
+  patterns? a card→feed expand for Stacking Card?). And above all of it, the
+  long-standing **real-phone pass** — the newest two features lean on it hardest
+  (the VT box-morph and the touch unstack are exactly what desktop can't vouch
+  for). Ask what the new task is rather than assuming any of these.
