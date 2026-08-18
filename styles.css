@@ -406,8 +406,12 @@ svg { display: block; }
 .switcher-scroll {
 	background: var(--g-1);
 	border-radius: var(--r-pill);
-	/* Inset so the active segment sits ON the track rather than filling it. */
-	padding: 4px;
+	/* Vertical inset only. The HORIZONTAL inset lives on .switcher-inner instead:
+	   a horizontal scroll container drops its own end padding at the scroll
+	   extreme, so with padding-inline here the last segment butted against the
+	   track edge once syncSwitcher scrolled it fully into view. Moving the inset
+	   into the scrolling content keeps it at both ends. */
+	padding-block: 4px;
 	overflow-x: auto;
 	scrollbar-width: none;
 	/* No edge mask here, unlike .tab-strip: a toggle needs crisp rounded ends,
@@ -416,15 +420,29 @@ svg { display: block; }
 	   scrolling segments instead. */
 }
 
-/* Exists purely to be an UNPADDED positioning context for the indicator, so a
-   segment's offsetLeft is exactly its distance from the track's inner edge. With
-   the indicator parented to the padded .switcher-scroll instead, every read and
-   write would need the 4px added or subtracted somewhere — which is precisely
-   where this kind of code silently drifts. */
+/* The indicator's positioning context. positionThumb/syncSwitcher measure with
+   getBoundingClientRect() (subtracting this element's own rect), so the leading
+   spacer below doesn't shift the indicator math — the thumb is placed from the
+   real onscreen delta, not offsetLeft. The horizontal 4px inset that used to
+   live on .switcher-scroll now lives on this element's ::before/::after (see the
+   note there for why it can't be padding). */
 .switcher-inner {
 	position: relative;
 	display: flex;
 	gap: 0;
+}
+
+/* The horizontal 4px inset, as real flex items rather than padding. A flex
+   container's padding-inline-END is dropped from scroll overflow in
+   Chromium/WebKit, so padding here let the last segment touch the track edge
+   once syncSwitcher scrolled it fully into view (the same end-padding drop the
+   scroll container itself has — it just moves down a level). Spacer flex items
+   ARE counted in scrollWidth, so the inset survives at both scroll ends. They're
+   pseudo-elements, so positionThumb's segment/thumb rects are unaffected. */
+.switcher-inner::before,
+.switcher-inner::after {
+	content: '';
+	flex: 0 0 4px;
 }
 
 /* The indicator. This is what carries the active fill now — the active segment
@@ -900,16 +918,6 @@ svg { display: block; }
 	box-shadow: 0 4px 14px -3px rgba(0, 0, 0, .16);
 }
 
-.deck-hint {
-	margin: var(--s-4) 0 0;
-	text-align: center;
-	font-size: var(--t-meta);
-	font-weight: 500;
-	letter-spacing: 0.06em;
-	text-transform: uppercase;
-	color: var(--ink-3);
-}
-
 /* ---------- Portal (#/portal) ----------
    REBUILT 2026-08-16 against Figma 206:9177. The previous Portal was
    scroll-driven (one row focused at a time, height interpolated from scroll
@@ -1324,30 +1332,31 @@ svg { display: block; }
 
 	/* The switcher lifts out of the phone and onto the field: it's harness
 	   chrome, not product chrome, and out here it can't be mistaken for app
-	   navigation. There's room for all 5 pills, so no scroll and no mask. */
+	   navigation. There's room for all 5 pills, so no scroll and no mask.
+
+	   The control is IDENTICAL to the phone now — grey track, white active pill,
+	   dark active text (the colour flip that used to live here is gone). The one
+	   thing the field can't supply is the white ground the phone bar gives for
+	   free: a grey track on the grey --field (#f1f1f1 vs #e6e6e6, 11/255) would
+	   dissolve. So .switcher becomes a white plate the track sits on — literally
+	   grey-on-white, the same read as the phone. width:auto + #app's
+	   align-items:center shrink-wrap and centre it below the frame. */
 	.switcher {
 		position: static;
 		transform: none;
 		max-width: none;
 		width: auto;
-		background: none;
-		padding: 0;
+		background: var(--g-0);
+		border-radius: var(--r-pill);
+		padding: 6px;
 	}
 
 	.switcher::before { display: none; }
 
-	/* The track goes WHITE out here, and the active segment goes dark. On the
-	   grey field, white reads as "object" and grey as "ground" — that's already
-	   how the phone frame itself works, so a grey track would dissolve into the
-	   field (--g-1 #f1f1f1 against --field #e6e6e6 is 11/255 apart, exactly the
-	   indistinguishable-greys problem M3 removed). The rule holding both
-	   breakpoints together is "the active segment takes the far end of the ramp
-	   from its own track", not a fixed colour.
-
-	   nowrap, not wrap: there's room for all five out here, and a wrapped track
-	   would break into two stacked lozenges. */
+	/* nowrap, not wrap: there's room for all five out here, and a wrapped track
+	   would break into two stacked lozenges. Colours are inherited from the phone
+	   rules (grey track, white thumb, dark active text) — no overrides. */
 	.switcher-scroll {
-		background: var(--g-0);
 		overflow: visible;
 	}
 
@@ -1355,12 +1364,6 @@ svg { display: block; }
 		flex-wrap: nowrap;
 		justify-content: center;
 	}
-
-	/* Track went white out here, so the indicator takes the dark end of the ramp
-	   and the active label flips to white with it. */
-	.switcher-thumb { background: var(--ink); }
-	.switcher-btn.active { color: var(--g-0); }
-	.switcher-btn:not(.active):active { background: var(--g-1); }
 }
 
 /* ---------- Reduced motion ----------

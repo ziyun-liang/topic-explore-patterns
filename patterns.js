@@ -58,6 +58,77 @@
 		return div.innerHTML;
 	}
 
+	// ---------- Scroll anchoring ----------
+	//
+	// A reflow triggered by tapping something — an accordion opening while the
+	// item ABOVE it closes — changes the height of content above the user's
+	// finger, so the thing they tapped slides out from under it (and, here, under
+	// the sticky .pattern-header). getScroller + keepAnchored are the fix: pin the
+	// tapped element's viewport position across the whole animated reflow so it
+	// never moves relative to the finger. Deliberately generic (any anchor
+	// element, any duration, any mutation) so Tabs and future reflow-on-tap
+	// patterns can reuse it rather than each re-solving scroll compensation.
+
+	// The scroll container differs by breakpoint: at phone width .app-shell rides
+	// the window (.device is display:contents), while at >=900px .app-shell is
+	// itself overflow-y:auto. Walk up for the real scroller; null means "the
+	// window/document scrolls".
+	function getScroller(el) {
+		for (var node = el && el.parentElement; node; node = node.parentElement) {
+			var oy = getComputedStyle(node).overflowY;
+			if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) {
+				return node;
+			}
+		}
+		return null;
+	}
+
+	var _anchorRAF = 0;
+
+	// Runs `mutate` (the DOM change that triggers the reflow) with the scroll
+	// compensated so `anchorEl`'s top stays exactly where it was before the tap.
+	// Each frame re-pins to the captured top, which naturally tracks the animated
+	// height change of whatever is above it — the collapsing item can no longer
+	// drag the anchor. Overlapping taps cancel the previous loop so corrections
+	// can't stack.
+	function keepAnchored(anchorEl, durationMs, mutate) {
+		var scroller = getScroller(anchorEl);
+		var startTop = anchorEl.getBoundingClientRect().top;
+
+		function scrollByDelta(delta) {
+			if (!delta) return;
+			if (scroller) scroller.scrollTop += delta;
+			else window.scrollBy(0, delta);
+		}
+
+		if (_anchorRAF) {
+			cancelAnimationFrame(_anchorRAF);
+			_anchorRAF = 0;
+		}
+
+		mutate();
+
+		// Reduced motion: the height transitions are `none` (styles.css), so the
+		// reflow already landed. Force layout, correct once, done — no loop.
+		if (prefersReducedMotion()) {
+			void anchorEl.offsetHeight;
+			scrollByDelta(anchorEl.getBoundingClientRect().top - startTop);
+			return;
+		}
+
+		// Pin every frame until the height animation has settled. The small buffer
+		// past durationMs absorbs sub-frame timing slack.
+		var start = performance.now();
+		(function tick(now) {
+			scrollByDelta(anchorEl.getBoundingClientRect().top - startTop);
+			if ((now || performance.now()) - start < durationMs + 60) {
+				_anchorRAF = requestAnimationFrame(tick);
+			} else {
+				_anchorRAF = 0;
+			}
+		})(start);
+	}
+
 	// ---------- Appear cascade ----------
 	//
 	// Stamps --i on each element so a single CSS keyframe (.rise-in in
@@ -246,6 +317,35 @@
 			.join('');
 	}
 
+	// Scrolls the tab strip the MINIMUM needed so the tapped pill is fully inside
+	// the crisp readable band — the strip inset by --gutter on each side, where
+	// the edge-fade mask (styles.css) reaches full opacity. A pill already fully
+	// visible doesn't move the strip at all (nearest-edge, not centre — centring
+	// every tap reads as chaotic when the labels are full questions).
+	//
+	// The strip's overflow is a deliberate finding (a real question can be wider
+	// than the phone); this only improves reading the selected tab, it never
+	// truncates or resizes anything. A pill wider than the band can't fully fit,
+	// so we align its START to the left gutter — you read the question from the
+	// beginning, the tail stays off-screen.
+	//
+	// Rects, not offsetLeft: offsetLeft rounds and is relative to the nearest
+	// positioned ancestor, the same trap syncSwitcher documents.
+	function nudgeTabIntoView(strip, tab) {
+		var gutter = parseFloat(getComputedStyle(strip).paddingLeft) || 0;
+		var sr = strip.getBoundingClientRect();
+		var tr = tab.getBoundingClientRect();
+		var readableLeft = sr.left + gutter;
+		var readableRight = sr.right - gutter;
+		var delta = 0;
+		if (tr.width > readableRight - readableLeft) delta = tr.left - readableLeft;
+		else if (tr.left < readableLeft) delta = tr.left - readableLeft;
+		else if (tr.right > readableRight) delta = tr.right - readableRight;
+		if (delta) {
+			strip.scrollBy({ left: delta, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+		}
+	}
+
 	// ---------- Tabs: strip of labels, one active direction shown below ----------
 
 	// The strip and the content are built ONCE and kept alive; only .active and
@@ -330,6 +430,7 @@
 			Array.prototype.forEach.call(strip.querySelectorAll('.tab'), function (b, bi) {
 				b.classList.toggle('active', bi === active);
 			});
+			nudgeTabIntoView(strip, btn);
 			paintContent(true);
 		});
 
@@ -381,15 +482,27 @@
 			var btn = e.target.closest('.acc-header');
 			if (!btn) return;
 			var tapped = Number(btn.dataset.i);
-			openIndex = openIndex === tapped ? -1 : tapped;
+			var willOpen = openIndex !== tapped;
+			openIndex = willOpen ? tapped : -1;
+
 			// Toggling every item in one pass means the closing panel and the
 			// opening one animate simultaneously, which is what reads as a single
 			// movement rather than a collapse followed by an expand.
-			Array.prototype.forEach.call(items, function (item, i) {
-				var isOpen = i === openIndex;
-				item.classList.toggle('open', isOpen);
-				item.querySelector('.acc-header').setAttribute('aria-expanded', String(isOpen));
-			});
+			function applyToggle() {
+				Array.prototype.forEach.call(items, function (item, i) {
+					var isOpen = i === openIndex;
+					item.classList.toggle('open', isOpen);
+					item.querySelector('.acc-header').setAttribute('aria-expanded', String(isOpen));
+				});
+			}
+
+			// Only anchor when OPENING: opening also collapses whatever was open
+			// above, which is what would otherwise drag the tapped header up under
+			// the sticky title. Closing the tapped item moves only content below
+			// its own header, so its position is already stable. 260ms matches
+			// --dur-height in styles.css (the accordion open/close transition).
+			if (willOpen) keepAnchored(btn, 260, applyToggle);
+			else applyToggle();
 		});
 	}
 
@@ -411,8 +524,7 @@
 			group.className = 'swipe-group cascade-item';
 			group.innerHTML =
 				'<p class="q-title">' + escapeHTML(d.question) + '</p>' +
-				cardRowHTML(i, true) +
-				(i === 0 ? '<p class="deck-hint">Swipe to browse</p>' : '');
+				cardRowHTML(i, true);
 			main.appendChild(group);
 			// Apply the stacked rest state now: no scroll event fires on mount, so
 			// without this the row would flash unstacked and only stack on first
