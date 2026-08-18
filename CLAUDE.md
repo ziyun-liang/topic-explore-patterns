@@ -124,14 +124,37 @@ that.
   **only** — Lindsey's explicit call: do NOT add drag-to-scroll to the plain
   Carousel.
 - Live at `https://ziyun-liang.github.io/topic-explore-patterns/`, current as of
-  commit `7fc5860` (2026-08-18, Portal immersive expand + Stacking Card). Verified
-  the deployed URL serves the new bundle (`setFlipToRow`, `Stacking Card`,
-  `feed-morph` all present; Pages build `built`, no error). Feature verification
-  was on desktop only this session — real clicks open/close the Portal feed
-  (box grows from the row rect → frame → identity, radius 20→0, content fades in;
-  reverse on close; switcher restored; focus returned to the row), Stacking Card
-  unstacks on scroll/drag. The `/portal-scroll/` fork is unchanged and still
-  deployed.
+  commit `95bd256` (2026-08-18, home eyebrow rename + Portal feed title/snap;
+  preceded by `e39a1ee`, the accordion/tabs/switcher polish — see the session log
+  entry). Verified the deployed URL serves the new bundle (`menuEyebrow`,
+  `applyFeedSnapInset`, `scroll-snap-type: y mandatory` all present). Feature
+  verification was desktop-only again this session (Playwright at 390×844 and
+  1440×900). The `/portal-scroll/` fork is unchanged and still deployed.
+- **Home eyebrow is decoupled from the pattern topic (2026-08-18).** The menu's
+  eyebrow now reads **"Collections UX exploration"** from a new
+  `CONTENT.menuEyebrow` field, NOT `CONTENT.topic`. `topic` still says
+  "A.I. education impact" and still titles all five pattern screens — so the
+  home page names the exploration while the pattern screens keep the editorial
+  theme the questions are about. The old coupling comment in `content.js` was
+  updated to match; don't re-merge them.
+- **Portal feed title matches the card question (2026-08-18).** `.feed-title`
+  went `font-weight: 600` → `500` and `line-height: 1.3` → `1.35`, so it computes
+  identically to the row `.q-title` (the question you tapped). Bonus: the open
+  morph (`portal-title` shared element) no longer jumps weight mid-flight.
+- **Portal feed snaps each card to centre on vertical swipe (2026-08-18).**
+  `.portal-feed` got `scroll-snap-type: y mandatory`; `.feed-list .card` got
+  `scroll-snap-align: center` + `scroll-snap-stop: always` (one card per swipe).
+  Two traps, both measured, both handled — **don't undo either:** (1) centring is
+  against the space BELOW the sticky header, not the full viewport, via a
+  JS-measured `scroll-padding-top` (`applyFeedSnapInset` in `patterns.js`, set on
+  mount and re-applied on resize, torn down in both close paths) — without it a
+  centred card's top tucked under the header/gradient (~4px clear at phone
+  height, a full ~44px under on the short desktop frame). (2) `.feed-list` carries
+  `35vh` trailing headroom so the LAST card can reach centre (it bottomed out
+  ~130px shy otherwise); it's not a dead rest zone because mandatory snap has no
+  snap point in the empty region. Card 0 still rests 8px into the top gradient at
+  scrollTop 0 — that's the natural top-of-feed landing (can't scroll above
+  itself), left as-is.
 - **Outstanding: never checked on a real phone.** Everything feel-dependent is
   unverified — press feedback, switcher scroll momentum, the M1 cascade rhythm
   and accordion height, the 240ms thumb slide, the new card size and bar weights,
@@ -1104,13 +1127,45 @@ promote into a milestone once there's enough shape to act on.
     are the standing unverified gap — a real phone is now more overdue than
     ever (see the Outstanding bullet in Current State).
 
-- **NEXT SESSION IS OPEN.** The previous "next session is decided: Portal
-  immersive tap animation" is **done** (2026-08-18, above). Lindsey wrapped
-  saying she'll start a new session with a new task — so there's no pre-committed
-  next thing. When it starts, the standing queue is still: M2's two deferred
-  responsive bugs → M4 (four reference videos still unwatched; three findings
-  settled, don't re-litigate) → the rest of M5 (variants for the other three
-  patterns? a card→feed expand for Stacking Card?). And above all of it, the
-  long-standing **real-phone pass** — the newest two features lean on it hardest
-  (the VT box-morph and the touch unstack are exactly what desktop can't vouch
-  for). Ask what the new task is rather than assuming any of these.
+- **2026-08-18 (later session) — foundational polish pass + two refinements.**
+  Two pushes: `e39a1ee` (accordion/tabs/switcher) then `95bd256` (home eyebrow +
+  Portal feed). Full behaviour is in Current State; what's worth not re-deriving:
+  - **Accordion "I lost my place" fixed foundationally.** Tapping an item used to
+    collapse the open item ABOVE your finger with no scroll compensation, sliding
+    the tapped header up under the sticky title. Fix is a reusable scroll-anchor
+    primitive (`keepAnchored(anchorEl, durationMs, mutate)` + `getScroller(el)` in
+    `patterns.js`): pin the tapped header's viewport top across the animated
+    reflow with a rAF loop; reduced motion lands the whole correction on frame 1.
+    Built generic on purpose so Tabs/future patterns can reuse it. Where scroll
+    room above the anchor is short, it degrades to "header stays visible below the
+    sticky title" rather than exact-pixel hold.
+  - **Tabs nudge-into-view.** Tapping a partly/fully off-screen pill scrolls the
+    strip the MINIMUM to make it fully readable (aligns to whichever gutter edge
+    it was clipped on); an already-visible pill doesn't move; an over-wide pill
+    aligns its start to the left gutter. Rect-based (not `offsetLeft`), reuses
+    `prefersReducedMotion()`. The deliberate 4×-viewport strip overflow (a
+    Findings result) is untouched — this only improves reading the selected tab.
+  - **"Swipe to browse" hint removed** from Stacking Card (the `.deck-hint` node
+    in `renderSwipe` and its CSS rule both deleted).
+  - **Switcher unified across breakpoints.** Active segment is now white on BOTH
+    phone and desktop (desktop's dark-active flip removed); desktop gets a white
+    rounded plate (`background --g-0`, `padding 6px`, pill radius) so the grey
+    track reads against the grey field. Mobile last-segment edge-touch fixed with
+    `::before`/`::after` flex spacers (`flex: 0 0 4px`) inside `.switcher-inner`
+    — browsers drop `padding-inline-end` on a scrolled flex container, so the
+    spacers (counted in `scrollWidth`) hold the 4px inset at both scroll ends.
+  - **Home eyebrow / Portal feed title / Portal vertical center-snap** — the two
+    refinements, all three detailed in Current State (the eyebrow decoupling, the
+    `.feed-title` weight match, and the `scroll-padding-top`/`35vh` snap-centring
+    traps). Verified desktop-only via Playwright; 0 console errors; deployed
+    bundle confirmed serving the new code.
+
+- **NEXT SESSION IS OPEN.** No pre-committed next thing. Standing queue: M2's two
+  deferred responsive bugs → M4 (four reference videos still unwatched; three
+  findings settled, don't re-litigate) → the rest of M5 (variants for the other
+  three patterns? a card→feed expand for Stacking Card?). And above all of it, the
+  long-standing **real-phone pass** — now even more overdue: the Portal VT
+  box-morph, the touch unstack, AND this session's touch feel (the accordion
+  scroll-anchor under a real finger, the tab nudge, the feed's mandatory
+  center-snap) are all exactly what desktop can't vouch for. Ask what the new task
+  is rather than assuming any of these.
