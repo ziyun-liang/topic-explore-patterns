@@ -1123,6 +1123,8 @@ svg { display: block; }
 	overflow-x: hidden;
 	scrollbar-width: none;
 	-webkit-overflow-scrolling: touch;
+	/* Each vertical swipe locks one content card to the centre of the space. */
+	scroll-snap-type: y mandatory;
 }
 
 .portal-feed::-webkit-scrollbar { display: none; }
@@ -1169,14 +1171,17 @@ svg { display: block; }
 
 .feed-back:active { transform: scale(0.92); }
 
-/* The question, as the feed's title. SHARED type token (--t-title), never a new
-   size — the low-fi craft rule holds here too. */
+/* The question, as the feed's title. Matches the card question `.q-title`
+   exactly (--t-title / 500 / -0.01em / 1.35) rather than a heavier heading:
+   the feed title IS the same question you tapped, and the open transition
+   morphs the row `.q-title` (`portal-title`) into this element, so a matching
+   weight also removes a weight jump mid-morph. */
 .feed-title {
 	margin: 0;
 	font-size: var(--t-title);
-	font-weight: 600;
+	font-weight: 500;
 	letter-spacing: -0.01em;
-	line-height: 1.3;
+	line-height: 1.35;
 }
 
 /* Two decorative meta bars (a dek / byline placeholder), matching the reference. */
@@ -1201,7 +1206,12 @@ svg { display: block; }
 	display: flex;
 	flex-direction: column;
 	gap: var(--s-5);
-	padding: var(--s-3) var(--gutter) calc(var(--s-7) + var(--s-6));
+	/* Trailing headroom (35vh) is what lets the LAST card reach centre under
+	   `scroll-snap-align: center` — without it the list bottoms out ~130px shy
+	   of centre. It's not a dead rest zone: mandatory snap has no snap point in
+	   the empty region, so the feed can only come to rest with the last card
+	   centred, never in the gap. */
+	padding: var(--s-3) var(--gutter) calc(var(--s-7) + var(--s-6) + 35vh);
 }
 
 /* Full-width here (the row scroller sizes cards to 88% for the peek; the feed
@@ -1209,6 +1219,9 @@ svg { display: block; }
 .feed-list .card {
 	width: 100%;
 	aspect-ratio: 355 / 473;
+	/* Snap centred, one card per swipe (see .portal-feed's scroll-snap-type). */
+	scroll-snap-align: center;
+	scroll-snap-stop: always;
 }
 
 /* ---- View Transition tuning (phone-width box-morph) ----

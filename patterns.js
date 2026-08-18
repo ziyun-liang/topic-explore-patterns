@@ -665,6 +665,24 @@
 		return feed;
 	}
 
+	// The cards snap-align to CENTRE (see .feed-list .card in styles.css), but the
+	// usable space is the viewport minus the sticky .feed-header and its gradient
+	// scrim. Centring against the full scrollport tucks each centred card's top
+	// under that band — only ~4px clear at phone height, and a full ~44px under
+	// on the short desktop frame. scroll-padding-top insets the snapport's top by
+	// exactly the header+gradient height so "centre" means centre of the space
+	// below it. Measured (not a token) because the header's height depends on how
+	// far the question wraps and on the breakpoint, so it's set here and kept
+	// current on resize.
+	function applyFeedSnapInset(feedEl) {
+		if (!feedEl) return;
+		var header = feedEl.querySelector('.feed-header');
+		if (!header) return;
+		var grad = parseFloat(getComputedStyle(document.documentElement)
+			.getPropertyValue('--s-5')) || 0; // the .feed-header::after scrim height
+		feedEl.style.scrollPaddingTop = (header.offsetHeight + grad) + 'px';
+	}
+
 	function openFeed(main, directions, rowEl, index) {
 		if (feedState) return; // already open / mid-transition
 		var device = main.closest('.device');
@@ -673,11 +691,15 @@
 
 		feedState = {
 			device: device, main: main, rowEl: rowEl, feedEl: feedEl,
-			keyHandler: null, closing: false
+			keyHandler: null, resizeHandler: null, closing: false
 		};
 
 		function mount() {
 			device.appendChild(feedEl);
+			applyFeedSnapInset(feedEl);
+			var onResize = function () { if (feedState) applyFeedSnapInset(feedState.feedEl); };
+			window.addEventListener('resize', onResize);
+			feedState.resizeHandler = onResize;
 			if (switcherEl) switcherEl.classList.add('is-hidden');
 			document.documentElement.classList.add('feed-open');
 		}
@@ -764,6 +786,7 @@
 		if (!feedState) return;
 		var fs = feedState;
 		if (fs.keyHandler) document.removeEventListener('keydown', fs.keyHandler);
+		if (fs.resizeHandler) window.removeEventListener('resize', fs.resizeHandler);
 		if (fs.openEnd) fs.feedEl.removeEventListener('transitionend', fs.openEnd);
 		clearFeedVT();
 		if (fs.feedEl && fs.feedEl.parentNode) fs.feedEl.parentNode.removeChild(fs.feedEl);
@@ -777,6 +800,7 @@
 		feedState.closing = true;
 		var fs = feedState;
 		if (fs.keyHandler) document.removeEventListener('keydown', fs.keyHandler);
+		if (fs.resizeHandler) window.removeEventListener('resize', fs.resizeHandler);
 		// If the desktop open morph is still running, detach its cleanup so it can't
 		// fire on the close transition and wipe the transform mid-collapse.
 		if (fs.openEnd) { fs.feedEl.removeEventListener('transitionend', fs.openEnd); fs.openEnd = null; }
@@ -847,7 +871,7 @@
 	function renderMenu(shell) {
 		shell.innerHTML =
 			'<div class="menu">' +
-			'<p class="menu-eyebrow">' + escapeHTML(CONTENT.topic) + '</p>' +
+			'<p class="menu-eyebrow">' + escapeHTML(CONTENT.menuEyebrow) + '</p>' +
 			'<h1 class="menu-title">Ways in</h1>' +
 			PATTERNS.map(function (p) {
 				return (

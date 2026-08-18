@@ -36,12 +36,18 @@
 // style, and a straight apostrophe would terminate these single-quoted strings.
 
 window.CONTENT = {
-	// The mocked theme name. Renders in two places: the menu's eyebrow, and the
-	// title of every pattern screen — all five say the same thing, on purpose
-	// (the pattern you're in is identified by the switcher, not the header).
-	// Sentence case, matching 'Ways in'; the eyebrow uppercases it in CSS.
-	// "A.I." with periods, matching the questions below and NYT house style.
+	// The mocked theme name. Renders as the title of every pattern screen —
+	// all five say the same thing, on purpose (the pattern you're in is
+	// identified by the switcher, not the header). Sentence case, matching
+	// 'Ways in'. "A.I." with periods, matching the questions below and NYT
+	// house style. (The menu eyebrow used to reuse this too, but was decoupled
+	// into `menuEyebrow` below so the home page can name the exploration itself
+	// while the pattern screens keep the editorial theme the questions are about.)
 	topic: 'A.I. education impact',
+
+	// The home page eyebrow (above 'Ways in'). Names the exploration itself,
+	// separate from `topic`. Uppercased in CSS.
+	menuEyebrow: 'Collections UX exploration',
 
 	patterns: {
 		carousel: {
